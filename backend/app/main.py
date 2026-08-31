@@ -165,6 +165,7 @@ from .services import (
     jays_stats_budget_workspace,
     jays_stats2_ai_categorise,
     jays_stats2_import_transactions,
+    jays_stats2_void_transaction,
     jays_stats2_update_transaction,
     jays_stats2_update_transaction_category,
     jays_stats2_workspace,
@@ -5220,8 +5221,12 @@ async def api_jays_stats_budget_publish(request: Request, user: dict = Depends(r
 
 
 @app.get("/api/jays-stats-2")
-async def api_jays_stats2(user: dict = Depends(require_panel_user)):
-    return {"status": "ok", **await jays_stats2_workspace(user)}
+async def api_jays_stats2(
+    limit: int = Query(10000, ge=100, le=20000),
+    offset: int = Query(0, ge=0, le=1000000),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **await jays_stats2_workspace(user, limit=limit, offset=offset)}
 
 
 @app.post("/api/jays-stats-2/uploads")
@@ -5259,6 +5264,14 @@ async def api_jays_stats2_update_transaction_fields(
 ):
     payload = await request.json()
     return {"status": "ok", **await jays_stats2_update_transaction(user, transaction_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/jays-stats-2/transactions/{transaction_id}/void")
+async def api_jays_stats2_void_transaction_record(
+    transaction_id: str,
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **await jays_stats2_void_transaction(user, transaction_id)}
 
 
 @app.post("/api/jays-stats-2/categorise-ai")

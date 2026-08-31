@@ -37605,6 +37605,11 @@
                 padding: 6px 8px;
                 line-height: 1;
             }
+            #jaysStats2Screen .jays-stats-mini-button.is-danger {
+                border-color: rgba(176, 58, 58, 0.26);
+                color: #9e2323;
+                background: #fff7f7;
+            }
             #jaysStats2Screen .jays-stats-mini-button:disabled {
                 opacity: 0.55;
                 cursor: not-allowed;
@@ -37614,6 +37619,44 @@
                 color: #8a4f07;
                 font-size: 0.76rem;
                 font-weight: 700;
+            }
+            #jaysStats2Screen .jays-stats-table-toolbar {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 10px 14px;
+                padding: 10px 12px;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                border-radius: 10px;
+                background: #f8fbff;
+            }
+            #jaysStats2Screen .jays-stats-table-toolbar label {
+                color: #2d4e7b;
+                font-size: 0.78rem;
+                font-weight: 700;
+            }
+            #jaysStats2Screen .jays-stats-table-toolbar select {
+                border: 1px solid rgba(61, 85, 130, 0.24);
+                border-radius: 8px;
+                background: #fff;
+                color: #224470;
+                font-size: 0.78rem;
+                font-weight: 600;
+                padding: 5px 8px;
+            }
+            #jaysStats2Screen .jays-stats-toggle {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                color: #2d4e7b;
+                font-size: 0.78rem;
+                font-weight: 650;
+            }
+            #jaysStats2Screen .jays-stats-table-count {
+                margin-left: auto;
+                color: #4c658a;
+                font-size: 0.75rem;
+                font-weight: 620;
             }
             #jaysStats2Screen .jays-stats-upload-summary-modal {
                 position: fixed;
@@ -49440,9 +49483,14 @@
             let jaysStats2EditDrafts = {};
             let jaysStats2SavingTransactionIds = new Set();
             let jaysStats2Categorising = false;
+            let jaysStats2VisibleRowLimit = 250;
+            let jaysStats2HideDebitRows = false;
+            let jaysStats2HideCategorisedRows = false;
+            const jaysStats2FetchLimit = 10000;
             let jaysStats2Workspace = {
                 account: { name: "JUK Trading Account", sortCode: "20-59-43", accountNumber: "93960404" },
                 summary: { transactionCount: 0, earliestDate: "", latestDate: "", latestRunningBalance: null, creditsTotal: 0, debitsTotal: 0, uncategorisedCreditCount: 0 },
+                window: { limit: 10000, offset: 0, returnedCount: 0, hasMore: false },
                 categoryStreams: [],
                 transactions: [],
             };
@@ -50494,6 +50542,7 @@
                         jaysStats2: config.endpoints?.jaysStats2 || "/api/jays-stats-2",
                         jaysStats2Uploads: config.endpoints?.jaysStats2Uploads || "/api/jays-stats-2/uploads",
                         jaysStats2UpdateTransaction: config.endpoints?.jaysStats2UpdateTransaction || "/api/jays-stats-2/transactions/:transactionId",
+                        jaysStats2VoidTransaction: config.endpoints?.jaysStats2VoidTransaction || "/api/jays-stats-2/transactions/:transactionId/void",
                         jaysStats2SetCategory: config.endpoints?.jaysStats2SetCategory || "/api/jays-stats-2/transactions/:transactionId/category",
                         jaysStats2CategoriseAi: config.endpoints?.jaysStats2CategoriseAi || "/api/jays-stats-2/categorise-ai",
                         bankStatements: config.endpoints?.bankStatements || "/api/bank-statements",
@@ -89026,11 +89075,13 @@
                 jaysStats2Loading = true;
                 renderJaysStats2Screen();
                 try {
-                    const payload = await requestJSON(api.endpoints.jaysStats2, { suppressFailurePanel: true, timeoutMs: 20000 });
+                    const workspacePath = `${api.endpoints.jaysStats2}?limit=${encodeURIComponent(String(jaysStats2FetchLimit))}&offset=0`;
+                    const payload = await requestJSON(workspacePath, { suppressFailurePanel: true, timeoutMs: 30000 });
                     if (payload && typeof payload === "object") {
                         jaysStats2Workspace = {
                             account: payload.account || jaysStats2Workspace.account,
                             summary: payload.summary || jaysStats2Workspace.summary,
+                            window: payload.window || jaysStats2Workspace.window,
                             categoryStreams: Array.isArray(payload.categoryStreams) ? payload.categoryStreams : (jaysStats2Workspace.categoryStreams || []),
                             transactions: Array.isArray(payload.transactions) ? payload.transactions : [],
                         };
@@ -89081,6 +89132,14 @@
                     const importedCount = Number(payload?.importedCount || 0);
                     const duplicateCount = Number(payload?.duplicateCount || 0) + Number(payload?.duplicateInFileCount || 0);
                     showToast(`Imported ${importedCount.toLocaleString("en-GB")} new transaction(s). ${duplicateCount.toLocaleString("en-GB")} duplicate(s) skipped.`, "success");
+                    const integrity = payload?.integrity && typeof payload.integrity === "object" ? payload.integrity : null;
+                    if (integrity && integrity.fullyAccounted === false) {
+                        showToast("Import integrity warning: not every extracted row was accounted for. Review upload summary.", "warning");
+                    }
+                    const gapCount = Number(integrity?.runningBalanceGapCount || 0);
+                    if (gapCount > 0) {
+                        showToast(`${gapCount.toLocaleString("en-GB")} running-balance gap(s) detected. Check highlighted rows for missing lines.`, "warning");
+                    }
                 } catch (error) {
                     showToast(error?.message || "Statement upload failed.", "error");
                 } finally {
@@ -89282,6 +89341,34 @@
                     showToast("Transaction updated.", "success");
                 } catch (error) {
                     showToast(error?.message || "Could not save transaction edits.", "error");
+                } finally {
+                    jaysStats2SavingTransactionIds.delete(txId);
+                    renderJaysStats2Screen();
+                }
+            }
+
+            async function jaysStats2VoidTransaction(transactionId) {
+                const txId = String(transactionId || "").trim();
+                if (!txId || jaysStats2SavingTransactionIds.has(txId)) return;
+                const confirmed = window.confirm("Void this transaction? It will be removed from the table and can be re-imported later.");
+                if (!confirmed) return;
+                jaysStats2SavingTransactionIds = new Set([...jaysStats2SavingTransactionIds, txId]);
+                renderJaysStats2Screen();
+                try {
+                    const payload = await requestJSON(endpointURL(api.endpoints.jaysStats2VoidTransaction, { transactionId: txId }), {
+                        method: "POST",
+                    });
+                    if (payload?.workspace && typeof payload.workspace === "object") {
+                        jaysStats2Workspace = payload.workspace;
+                    } else {
+                        await loadJaysStats2({ silent: true });
+                    }
+                    const next = { ...jaysStats2EditDrafts };
+                    delete next[txId];
+                    jaysStats2EditDrafts = next;
+                    showToast("Transaction voided. It can be re-imported in future uploads.", "success");
+                } catch (error) {
+                    showToast(error?.message || "Unable to void transaction.", "error");
                 } finally {
                     jaysStats2SavingTransactionIds.delete(txId);
                     renderJaysStats2Screen();
@@ -89507,6 +89594,7 @@
                 else stopJaysStats2ImportUiTicker();
                 const account = jaysStats2Workspace?.account || {};
                 const summary = jaysStats2Workspace?.summary || {};
+                const workspaceWindow = jaysStats2Workspace?.window || {};
                 const transactions = Array.isArray(jaysStats2Workspace?.transactions) ? jaysStats2Workspace.transactions : [];
                 const groupedByMonth = jaysStats2TransactionsByMonth(transactions);
                 const monthKeys = [...groupedByMonth.keys()];
@@ -89525,7 +89613,17 @@
                     <li>${escapeHTML(formatDate(String(row?.date || "")))} • ${escapeHTML(String(row?.description || ""))} • ${escapeHTML(formatCurrency(Number(row?.amount || 0)))} • ${escapeHTML(String(row?.fileName || ""))}</li>
                 `).join("");
                 const balanceWarnings = jaysStats2RunningBalanceWarnings(transactions);
-                const rows = transactions.map((row) => {
+                const filteredTransactions = transactions.filter((row) => {
+                    const amount = Number(row?.amount || 0);
+                    const streamKey = String(row?.categoryStreamKey || "").trim().toLowerCase();
+                    if (jaysStats2HideDebitRows && amount < 0) return false;
+                    if (jaysStats2HideCategorisedRows && streamKey && streamKey !== "unclassified") return false;
+                    return true;
+                });
+                const visibleTransactions = jaysStats2VisibleRowLimit > 0
+                    ? filteredTransactions.slice(0, jaysStats2VisibleRowLimit)
+                    : filteredTransactions;
+                const rows = visibleTransactions.map((row) => {
                     const txId = String(row?.id || "");
                     const draft = jaysStats2EditDrafts[txId] && typeof jaysStats2EditDrafts[txId] === "object" ? jaysStats2EditDrafts[txId] : {};
                     const warning = balanceWarnings.get(txId);
@@ -89553,9 +89651,8 @@
                                 ${warningMarkup}
                             </td>
                             <td>
-                                <label class="sr-only" for="jaysStats2Category-${escapeHTML(txId)}">Category</label>
                                 <div class="jays-stats-category-cell">
-                                    <select class="jays-stats-excel-select" id="jaysStats2Category-${escapeHTML(txId)}" data-jays-stats2-category-id="${escapeHTML(txId)}" ${jaysStats2Importing || jaysStats2Categorising || saving ? "disabled" : ""}>
+                                    <select class="jays-stats-excel-select" id="jaysStats2Category-${escapeHTML(txId)}" aria-label="Transaction category" data-jays-stats2-category-id="${escapeHTML(txId)}" ${jaysStats2Importing || jaysStats2Categorising || saving ? "disabled" : ""}>
                                         ${categoryStreams.map((stream) => `<option value="${escapeHTML(String(stream?.key || ""))}" ${String(row?.categoryStreamKey || "") === String(stream?.key || "") ? "selected" : ""}>${escapeHTML(String(stream?.label || ""))}</option>`).join("")}
                                     </select>
                                     ${confidenceBubble}
@@ -89565,13 +89662,21 @@
                                 <div class="jays-stats-table-actions">
                                     <button class="jays-stats-mini-button" type="button" data-jays-stats2-save-edit="${escapeHTML(txId)}" ${saving ? "disabled" : ""}>${saving ? "Saving..." : "Save"}</button>
                                     <button class="jays-stats-mini-button" type="button" data-jays-stats2-revert-edit="${escapeHTML(txId)}" ${saving ? "disabled" : ""}>Revert</button>
+                                    <button class="jays-stats-mini-button is-danger" type="button" data-jays-stats2-void="${escapeHTML(txId)}" ${saving ? "disabled" : ""}>Void</button>
                                 </div>
                             </td>
                         </tr>
                     `;
                 }).join("");
-                const warningSummaryCopy = balanceWarnings.size
-                    ? `${balanceWarnings.size.toLocaleString("en-GB")} running balance warning${balanceWarnings.size === 1 ? "" : "s"} highlighted below.`
+                const visibleWarningCount = visibleTransactions.reduce((count, row) => (
+                    balanceWarnings.has(String(row?.id || "")) ? count + 1 : count
+                ), 0);
+                const warningSummaryCopy = visibleWarningCount
+                    ? `${visibleWarningCount.toLocaleString("en-GB")} running balance warning${visibleWarningCount === 1 ? "" : "s"} highlighted in this view.`
+                    : "";
+                const rowCountSummary = `Showing ${visibleTransactions.length.toLocaleString("en-GB")} of ${filteredTransactions.length.toLocaleString("en-GB")} filtered row${filteredTransactions.length === 1 ? "" : "s"} · ${transactions.length.toLocaleString("en-GB")} loaded`;
+                const serverCapWarning = workspaceWindow?.hasMore
+                    ? `Server currently returned ${Number(workspaceWindow?.returnedCount || transactions.length).toLocaleString("en-GB")} rows. Increase API limit to load older transactions.`
                     : "";
                 const showImportExamplesModal = Boolean(importSummary && jaysStats2UploadSummaryModalOpen && jaysStats2UploadSummaryModalKey === String(importSummary?.summaryKey || ""));
                 panel.innerHTML = `
@@ -89595,7 +89700,21 @@
                         </header>
                         ${importProcessingBanner}
                         <p class="jays-stats-meta-note">Date range: ${escapeHTML(formatDate(summary.earliestDate || ""))} to ${escapeHTML(formatDate(summary.latestDate || ""))}. Edit date, description, amount, running balance, and category directly in-grid.</p>
+                        ${serverCapWarning ? `<p class="jays-stats-inline-warning">${escapeHTML(serverCapWarning)}</p>` : ""}
                         ${warningSummaryCopy ? `<p class="jays-stats-inline-warning">${escapeHTML(warningSummaryCopy)}</p>` : ""}
+                        <section class="jays-stats-table-toolbar">
+                            <label for="jaysStats2RowLimitSelect">Show rows</label>
+                            <select id="jaysStats2RowLimitSelect">
+                                <option value="100" ${jaysStats2VisibleRowLimit === 100 ? "selected" : ""}>100</option>
+                                <option value="250" ${jaysStats2VisibleRowLimit === 250 ? "selected" : ""}>250</option>
+                                <option value="500" ${jaysStats2VisibleRowLimit === 500 ? "selected" : ""}>500</option>
+                                <option value="1000" ${jaysStats2VisibleRowLimit === 1000 ? "selected" : ""}>1,000</option>
+                                <option value="all" ${jaysStats2VisibleRowLimit === 0 ? "selected" : ""}>All loaded</option>
+                            </select>
+                            <label class="jays-stats-toggle"><input type="checkbox" id="jaysStats2HideDebitsToggle" ${jaysStats2HideDebitRows ? "checked" : ""}> Hide debit rows</label>
+                            <label class="jays-stats-toggle"><input type="checkbox" id="jaysStats2HideCategorisedToggle" ${jaysStats2HideCategorisedRows ? "checked" : ""}> Hide categorised rows</label>
+                            <span class="jays-stats-table-count">${escapeHTML(rowCountSummary)}</span>
+                        </section>
                         <section class="jays-stats-table-wrap is-excel">
                             <table class="jays-stats-table is-excel-grid">
                                 <thead>
@@ -89608,7 +89727,7 @@
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody>${rows || '<tr><td colspan="6" style="padding:10px;">No transactions yet. Upload a statement to begin.</td></tr>'}</tbody>
+                                <tbody>${rows || '<tr><td colspan="6" style="padding:10px;">No rows match current filters.</td></tr>'}</tbody>
                             </table>
                         </section>
                         ${showImportExamplesModal ? `
@@ -89653,6 +89772,24 @@
                     jaysStats2SelectedMonthKey = String(event?.target?.value || "");
                     renderJaysStats2Screen();
                 });
+                document.getElementById("jaysStats2RowLimitSelect")?.addEventListener("change", (event) => {
+                    const value = String(event?.target?.value || "").trim().toLowerCase();
+                    if (value === "all") {
+                        jaysStats2VisibleRowLimit = 0;
+                    } else {
+                        const parsed = Number.parseInt(value, 10);
+                        jaysStats2VisibleRowLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : 250;
+                    }
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2HideDebitsToggle")?.addEventListener("change", (event) => {
+                    jaysStats2HideDebitRows = Boolean(event?.target?.checked);
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2HideCategorisedToggle")?.addEventListener("change", (event) => {
+                    jaysStats2HideCategorisedRows = Boolean(event?.target?.checked);
+                    renderJaysStats2Screen();
+                });
                 panel.querySelectorAll("[data-jays-stats2-category-id]").forEach((element) => {
                     element.addEventListener("change", (event) => {
                         const txId = String(event?.target?.dataset?.jaysStats2CategoryId || "");
@@ -89681,6 +89818,13 @@
                         const txId = String(button?.dataset?.jaysStats2RevertEdit || "");
                         if (!txId) return;
                         jaysStats2RevertDraft(txId);
+                    });
+                });
+                panel.querySelectorAll("[data-jays-stats2-void]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const txId = String(button?.dataset?.jaysStats2Void || "");
+                        if (!txId) return;
+                        jaysStats2VoidTransaction(txId);
                     });
                 });
                 const statementInput = document.getElementById("jaysStats2StatementFileInput");

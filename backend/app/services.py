@@ -39729,6 +39729,9 @@ def _ensure_jays_stats2_tables() -> None:
                     category_confidence NUMERIC(6, 4) NULL,
                     category_source TEXT NOT NULL DEFAULT 'unclassified',
                     category_updated_at TIMESTAMPTZ NULL,
+                    is_voided BOOLEAN NOT NULL DEFAULT FALSE,
+                    voided_at TIMESTAMPTZ NULL,
+                    voided_by_user_id TEXT NULL,
                     source_hash TEXT NOT NULL,
                     raw JSONB NOT NULL DEFAULT '{}'::jsonb,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -39737,8 +39740,20 @@ def _ensure_jays_stats2_tables() -> None:
             )
             cursor.execute(
                 """
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_jays_stats2_tx_dedupe
+                SELECT 1
+                FROM pg_indexes
+                WHERE schemaname = current_schema()
+                  AND indexname = 'idx_jays_stats2_tx_dedupe'
+                LIMIT 1
+                """
+            )
+            if cursor.fetchone():
+                cursor.execute("DROP INDEX idx_jays_stats2_tx_dedupe")
+            cursor.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_jays_stats2_tx_dedupe_active
                 ON jays_stats2_transactions (user_id, tenant_id, source_hash)
+                WHERE is_voided = FALSE
                 """
             )
             cursor.execute(
@@ -39779,6 +39794,24 @@ def _ensure_jays_stats2_tables() -> None:
             )
             cursor.execute(
                 """
+                ALTER TABLE jays_stats2_transactions
+                ADD COLUMN IF NOT EXISTS is_voided BOOLEAN NOT NULL DEFAULT FALSE
+                """
+            )
+            cursor.execute(
+                """
+                ALTER TABLE jays_stats2_transactions
+                ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ NULL
+                """
+            )
+            cursor.execute(
+                """
+                ALTER TABLE jays_stats2_transactions
+                ADD COLUMN IF NOT EXISTS voided_by_user_id TEXT NULL
+                """
+            )
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS jays_stats2_category_rules (
                     id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -39811,6 +39844,37 @@ def _jays_stats2_signature(date_iso: str, description: str, amount: Decimal, run
         balance_text,
     ])
     return hashlib.sha256(signature.encode("utf-8")).hexdigest()
+
+
+def _jays_stats2_running_balance_gap_report(rows: list[dict]) -> dict:
+    ordered = [
+        row for row in (rows or [])
+        if isinstance(row, dict)
+    ]
+    ordered.sort(key=lambda row: (
+        str((row.get("date") or "")),
+        str((row.get("sourceHash") or "")),
+    ))
+    previous_balance: Decimal | None = None
+    gaps: list[dict] = []
+    for row in ordered:
+        amount = _money(row.get("amount"))
+        running_balance_raw = row.get("runningBalance")
+        running_balance = _money(running_balance_raw) if running_balance_raw is not None else None
+        if previous_balance is not None and running_balance is not None:
+            expected = _money(previous_balance + amount)
+            delta = _money(running_balance - expected)
+            if abs(delta) >= Decimal("0.01"):
+                gaps.append({
+                    "date": str(row.get("dateISO") or ""),
+                    "description": str(row.get("description") or ""),
+                    "expected": float(expected),
+                    "actual": float(running_balance),
+                    "delta": float(delta),
+                })
+        if running_balance is not None:
+            previous_balance = _money(running_balance)
+    return {"gapCount": len(gaps), "sample": gaps[:10]}
 
 
 def _jays_stats_parse_currency(value) -> Decimal:
@@ -40127,7 +40191,7 @@ def _jays_stats2_serialise_row(row: dict) -> dict:
     }
 
 
-async def jays_stats2_workspace(user: dict, limit: int = 500) -> dict:
+async def jays_stats2_workspace(user: dict, limit: int = 10000, offset: int = 0) -> dict:
     _ensure_jays_stats2_tables()
     tenant_id = _bank_statement_tenant_id(user)
     user_id = str(user.get("id") or "")
@@ -40140,6 +40204,9 @@ async def jays_stats2_workspace(user: dict, limit: int = 500) -> dict:
         "creditsTotal": 0.0,
         "debitsTotal": 0.0,
     }
+    limit_value = max(100, min(int(limit or 10000), 20000))
+    offset_value = max(0, min(int(offset or 0), 1000000))
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -40160,10 +40227,12 @@ async def jays_stats2_workspace(user: dict, limit: int = 500) -> dict:
                 FROM jays_stats2_transactions
                 WHERE user_id = %s
                   AND tenant_id = %s
+                  AND is_voided = FALSE
                 ORDER BY transaction_date DESC NULLS LAST, created_at DESC
                 LIMIT %s
+                OFFSET %s
                 """,
-                (user_id, tenant_id, max(50, min(int(limit or 500), 2000))),
+                (user_id, tenant_id, limit_value, offset_value),
             )
             rows = cursor.fetchall() or []
             cursor.execute(
@@ -40177,6 +40246,7 @@ async def jays_stats2_workspace(user: dict, limit: int = 500) -> dict:
                 FROM jays_stats2_transactions
                 WHERE user_id = %s
                   AND tenant_id = %s
+                  AND is_voided = FALSE
                 """,
                 (user_id, tenant_id),
             )
@@ -40188,6 +40258,7 @@ async def jays_stats2_workspace(user: dict, limit: int = 500) -> dict:
                 WHERE user_id = %s
                   AND tenant_id = %s
                   AND running_balance IS NOT NULL
+                  AND is_voided = FALSE
                 ORDER BY transaction_date DESC NULLS LAST, created_at DESC
                 LIMIT 1
                 """,
@@ -40219,6 +40290,12 @@ async def jays_stats2_workspace(user: dict, limit: int = 500) -> dict:
             "accountNumber": JAYS_STATS2_ACCOUNT_NUMBER,
         },
         "summary": summary,
+        "window": {
+            "limit": limit_value,
+            "offset": offset_value,
+            "returnedCount": len(rows),
+            "hasMore": summary["transactionCount"] > (offset_value + len(rows)),
+        },
         "categoryStreams": JAYS_STATS2_STREAMS,
         "transactions": [_jays_stats2_serialise_row(row) for row in rows],
     }
@@ -40297,7 +40374,17 @@ async def jays_stats2_import_transactions(user: dict, file_items: list[dict]) ->
             detail=f"Unsupported file type for {file_name}. Upload PDF, CSV, or .xlsx statements.",
         )
 
-    normalised_rows = [_jays_stats2_apply_category_rules(row, category_rules) for row in extracted_rows if isinstance(row, dict)]
+    normalised_rows: list[dict] = []
+    invalid_row_count = 0
+    for extracted in extracted_rows:
+        if not isinstance(extracted, dict):
+            invalid_row_count += 1
+            continue
+        normalised = _jays_stats2_apply_category_rules(extracted, category_rules)
+        if not isinstance(normalised, dict):
+            invalid_row_count += 1
+            continue
+        normalised_rows.append(normalised)
     if not normalised_rows:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -40352,7 +40439,7 @@ async def jays_stats2_import_transactions(user: dict, file_items: list[dict]) ->
                         created_at
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
-                    ON CONFLICT (user_id, tenant_id, source_hash) DO NOTHING
+                    ON CONFLICT (user_id, tenant_id, source_hash) WHERE is_voided = FALSE DO NOTHING
                     RETURNING id
                     """,
                     (
@@ -40398,8 +40485,28 @@ async def jays_stats2_import_transactions(user: dict, file_items: list[dict]) ->
                         })
         connection.commit()
 
-    workspace = await jays_stats2_workspace(user)
     extracted_count = sum(int((file_summaries.get(name) or {}).get("extractedCount") or 0) for name in file_order)
+    running_balance_report = _jays_stats2_running_balance_gap_report(deduped_rows)
+    integrity = {
+        "extractedCount": extracted_count,
+        "normalisedCount": len(normalised_rows),
+        "invalidCount": invalid_row_count,
+        "processedCount": len(deduped_rows),
+        "importedCount": inserted,
+        "duplicateExistingCount": duplicate_existing,
+        "duplicateInFileCount": duplicate_in_file,
+        "accountedForCount": inserted + duplicate_existing + duplicate_in_file + invalid_row_count,
+        "fullyAccounted": (inserted + duplicate_existing + duplicate_in_file + invalid_row_count) == extracted_count,
+        "runningBalanceGapCount": int(running_balance_report.get("gapCount") or 0),
+        "runningBalanceGapSamples": running_balance_report.get("sample") or [],
+    }
+    if not integrity["fullyAccounted"]:
+        parser_messages.append("Import integrity warning: extracted rows were not fully accounted for after dedupe and validation.")
+    if integrity["runningBalanceGapCount"] > 0:
+        parser_messages.append(
+            f"Detected {integrity['runningBalanceGapCount']} running-balance gap(s) in the imported sequence; review for potential missing transactions."
+        )
+    workspace = await jays_stats2_workspace(user)
     file_summary_rows = [file_summaries[name] for name in file_order if name in file_summaries]
     return {
         "importedCount": inserted,
@@ -40408,6 +40515,7 @@ async def jays_stats2_import_transactions(user: dict, file_items: list[dict]) ->
         "processedCount": len(deduped_rows),
         "extractedCount": extracted_count,
         "messages": parser_messages,
+        "integrity": integrity,
         "fileSummaries": file_summary_rows,
         "importedSamples": imported_samples,
         "duplicateSamples": duplicate_samples,
@@ -40495,6 +40603,7 @@ async def jays_stats2_update_transaction_category(user: dict, transaction_id: st
                 WHERE id = %s
                   AND user_id = %s
                   AND tenant_id = %s
+                  AND is_voided = FALSE
                 RETURNING id, description, category_stream_key, category_stream_label, category_source, category_confidence
                 """,
                 (
@@ -40581,6 +40690,7 @@ async def jays_stats2_update_transaction(user: dict, transaction_id: str, payloa
                     WHERE id = %s
                       AND user_id = %s
                       AND tenant_id = %s
+                      AND is_voided = FALSE
                     RETURNING id
                     """,
                     (
@@ -40600,7 +40710,7 @@ async def jays_stats2_update_transaction(user: dict, transaction_id: str, payloa
             connection.commit()
     except Exception as exc:
         message = str(exc).lower()
-        if "idx_jays_stats2_tx_dedupe" in message or "duplicate key value" in message:
+        if "idx_jays_stats2_tx_dedupe_active" in message or "idx_jays_stats2_tx_dedupe" in message or "duplicate key value" in message:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This edit would duplicate an existing transaction (same date, description, amount, and running balance).",
@@ -40613,6 +40723,44 @@ async def jays_stats2_update_transaction(user: dict, transaction_id: str, payloa
     workspace = await jays_stats2_workspace(user)
     return {
         "transactionId": tx_id,
+        "workspace": workspace,
+    }
+
+
+async def jays_stats2_void_transaction(user: dict, transaction_id: str) -> dict:
+    _ensure_jays_stats2_tables()
+    tenant_id = _bank_statement_tenant_id(user)
+    user_id = str(user.get("id") or "")
+    tx_id = str(transaction_id or "").strip()
+    if not tx_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction id is required.")
+
+    row = None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE jays_stats2_transactions
+                SET is_voided = TRUE,
+                    voided_at = %s,
+                    voided_by_user_id = %s
+                WHERE id = %s
+                  AND user_id = %s
+                  AND tenant_id = %s
+                  AND is_voided = FALSE
+                RETURNING id
+                """,
+                (utcnow(), user_id, tx_id, user_id, tenant_id),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found or already voided.")
+
+    workspace = await jays_stats2_workspace(user)
+    return {
+        "transactionId": tx_id,
+        "voided": True,
         "workspace": workspace,
     }
 
@@ -40653,7 +40801,7 @@ async def jays_stats2_ai_categorise(user: dict, payload: dict | None = None) -> 
     limit = max(20, min(int(body.get("limit") or 200), 500))
     target_ids = [str(item).strip() for item in (body.get("transactionIds") or []) if str(item).strip()]
 
-    where_parts = ["user_id = %s", "tenant_id = %s", "amount > 0"]
+    where_parts = ["user_id = %s", "tenant_id = %s", "amount > 0", "is_voided = FALSE"]
     params: list[object] = [user_id, tenant_id]
     if target_ids:
         where_parts.append("id = ANY(%s)")
@@ -40722,14 +40870,14 @@ async def jays_stats2_ai_categorise(user: dict, payload: dict | None = None) -> 
     }
     response_payload = await _post_openai_responses(
         request_body,
-        "Jays Stats 2 transaction categorisation",
+        "Cash Collection Tracker transaction categorisation",
         preferred_model=settings.openai_model,
         timeout_seconds=35,
         user_id=user_id,
         feature="openai-core",
         page="jays-stats-2",
     )
-    parsed = _load_openai_json_response(response_payload, "OpenAI returned invalid JSON for Jays Stats 2 categorisation.")
+    parsed = _load_openai_json_response(response_payload, "OpenAI returned invalid JSON for Cash Collection Tracker categorisation.")
     matches = parsed.get("matches") if isinstance(parsed, dict) else []
     if not isinstance(matches, list):
         matches = []
