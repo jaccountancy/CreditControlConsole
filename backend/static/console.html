@@ -87915,6 +87915,15 @@
                 renderJaysStatsScreen();
                 let totalCredits = 0;
                 let backendImportError = null;
+                const applyImportedBankTransfers = (amountValue, source = "bank-import") => {
+                    const input = document.getElementById("jaysStatsBankTransfersInput");
+                    if (input) input.value = Number(amountValue || 0).toFixed(2);
+                    jaysStatsSetPendingSource("bankTransfers", source);
+                    const entry = jaysStatsCollectFormEntry();
+                    const entryMonthKey = jaysStatsMonthKeyFromDate(entry.date);
+                    if (entryMonthKey !== month.monthKey) return false;
+                    return updateJaysStatsEntry(month.monthKey, entry);
+                };
                 try {
                     try {
                         const formData = new FormData();
@@ -87924,11 +87933,9 @@
                         const payload = await requestFormData(api.endpoints.jaysStatsBankCredits, formData, {}, { suppressFailurePanel: true });
                         totalCredits = Number(payload?.creditsTotal || payload?.bankTransfers || 0);
                         if (Number.isFinite(totalCredits) && totalCredits > 0) {
-                        const input = document.getElementById("jaysStatsBankTransfersInput");
-                        if (input) input.value = totalCredits.toFixed(2);
-                        jaysStatsSetPendingSource("bankTransfers", "bank-import");
-                        showToast(`Imported ${formatCurrency(totalCredits)} of external credits via backend extraction.`, "success");
-                    } else {
+                            applyImportedBankTransfers(totalCredits, "bank-import");
+                            showToast(`Imported ${formatCurrency(totalCredits)} of external credits via backend extraction.`, "success");
+                        } else {
                         showToast("No eligible external credits were found by backend extraction.", "info");
                         }
                         return;
@@ -87964,9 +87971,9 @@
                             creditsCount += Number(parsed.creditsCount || 0);
                             ignoredCount += Number(parsed.ignoredCount || 0);
                         }
-                        const input = document.getElementById("jaysStatsBankTransfersInput");
-                        if (input) input.value = totalCredits.toFixed(2);
-                        jaysStatsSetPendingSource("bankTransfers", "bank-import");
+                        if (Number.isFinite(totalCredits) && totalCredits > 0) {
+                            applyImportedBankTransfers(totalCredits, "bank-import");
+                        }
                         persistJaysStatsState();
                         showToast(`CSV fallback imported ${creditsCount.toLocaleString("en-GB")} credits (${ignoredCount.toLocaleString("en-GB")} internal transfers filtered).`, "success");
                     } catch (error) {
