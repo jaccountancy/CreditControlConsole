@@ -53112,6 +53112,8 @@
                 const activityContext = requestActivityContext(template, { method: "POST", body: formData }, params);
                 const startedAt = performance.now();
                 const resolvedEndpoint = endpointURL(template, params);
+                const autoSuppressFailurePanel = /\/api\/jays-stats\/bank-credits(?:\?|$)/.test(resolvedEndpoint);
+                const shouldSuppressFailurePanel = suppressFailurePanel || autoSuppressFailurePanel;
                 logAPIActivity("api.started", activityContext);
                 const headers = Object.fromEntries(
                     Object.entries({ ...api.headers, ...panelAuthHeaders() })
@@ -53130,7 +53132,7 @@
                         durationMs: Math.round(performance.now() - startedAt),
                         error: error?.message || String(error || "Network request failed")
                     });
-                    if (!suppressFailurePanel) {
+                    if (!shouldSuppressFailurePanel) {
                         openFailureDetailsPanel({
                             title: "Network upload failed",
                             summary: `Unable to reach API for ${activityContext?.label || "upload request"}.`,
@@ -53158,7 +53160,7 @@
                         error: message,
                         response: sanitiseActivityValue(payload)
                     });
-                    if (!suppressFailurePanel) {
+                    if (!shouldSuppressFailurePanel) {
                         openFailureDetailsPanel({
                             title: "Authentication required",
                             summary: `Session/authentication failed for ${activityContext?.label || "upload request"}.`,
@@ -53182,7 +53184,7 @@
                         error: String(baseMessage),
                         response: sanitiseActivityValue(payload)
                     });
-                    if (!suppressFailurePanel) {
+                    if (!shouldSuppressFailurePanel) {
                         openFailureDetailsPanel({
                             title: "API upload failed",
                             summary: `Backend returned an error for ${activityContext?.label || "upload request"}.`,
@@ -87912,6 +87914,7 @@
                 jaysStatsImporting = true;
                 renderJaysStatsScreen();
                 let totalCredits = 0;
+                let backendImportError = null;
                 try {
                     try {
                         const formData = new FormData();
@@ -87929,9 +87932,23 @@
                         showToast("No eligible external credits were found by backend extraction.", "info");
                         }
                         return;
-                    } catch {}
+                    } catch (error) {
+                        backendImportError = error || null;
+                    }
 
                     try {
+                        const csvFiles = files.filter((file) => {
+                            const name = String(file?.name || "").toLowerCase();
+                            const type = String(file?.type || "").toLowerCase();
+                            return name.endsWith(".csv") || type.includes("csv");
+                        });
+                        if (!csvFiles.length) {
+                            throw new Error(
+                                backendImportError?.statusCode === 502
+                                    ? "PDF import requires the backend extraction service, which is currently unavailable (502). Please retry after the backend is healthy."
+                                    : "PDF import requires backend extraction. Please retry shortly."
+                            );
+                        }
                         const patternsRaw = document.getElementById("jaysStatsInternalPatternsInput")?.value || "";
                         const patterns = patternsRaw
                             .split(",")
@@ -87940,7 +87957,7 @@
                         if (patterns.length) month.internalTransferPatterns = patterns;
                         let creditsCount = 0;
                         let ignoredCount = 0;
-                        for (const file of files) {
+                        for (const file of csvFiles) {
                             const text = await file.text();
                             const parsed = parseJaysStatsCreditsFromCsv(text, month.internalTransferPatterns || []);
                             totalCredits += Number(parsed.credits || 0);
