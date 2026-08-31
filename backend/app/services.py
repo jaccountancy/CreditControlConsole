@@ -39877,6 +39877,12 @@ def _jays_stats2_running_balance_gap_report(rows: list[dict]) -> dict:
     return {"gapCount": len(gaps), "sample": gaps[:10]}
 
 
+def _jays_stats2_fmt_money(value) -> str:
+    amount = _money(value)
+    sign = "-" if amount < 0 else ""
+    return f"{sign}£{abs(amount):,.2f}"
+
+
 def _jays_stats_parse_currency(value) -> Decimal:
     text = str(value or "").strip()
     if not text:
@@ -40763,6 +40769,274 @@ async def jays_stats2_void_transaction(user: dict, transaction_id: str) -> dict:
         "voided": True,
         "workspace": workspace,
     }
+
+
+async def jays_stats2_bulk_update(user: dict, payload: dict | None = None) -> dict:
+    _ensure_jays_stats2_tables()
+    tenant_id = _bank_statement_tenant_id(user)
+    user_id = str(user.get("id") or "")
+    body = payload if isinstance(payload, dict) else {}
+    action = str(body.get("action") or "").strip().lower()
+    transaction_ids = [
+        str(item or "").strip()
+        for item in (body.get("transactionIds") or [])
+        if str(item or "").strip()
+    ]
+    if not transaction_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one transaction.")
+    if len(transaction_ids) > 2000:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Too many transactions selected in one action.")
+    transaction_ids = list(dict.fromkeys(transaction_ids))
+
+    updated_count = 0
+    if action == "set-category":
+        stream_key = _jays_stats2_normalise_stream_key(body.get("streamKey"), body.get("streamLabel"))
+        stream_label = _jays_stats2_stream_label(stream_key)
+        now = utcnow()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE jays_stats2_transactions
+                    SET category_stream_key = %s,
+                        category_stream_label = %s,
+                        category_confidence = %s,
+                        category_source = %s,
+                        category_updated_at = %s
+                    WHERE user_id = %s
+                      AND tenant_id = %s
+                      AND is_voided = FALSE
+                      AND id = ANY(%s)
+                    """,
+                    (
+                        stream_key,
+                        stream_label,
+                        Decimal("1.0"),
+                        "manual",
+                        now,
+                        user_id,
+                        tenant_id,
+                        transaction_ids,
+                    ),
+                )
+                updated_count = int(cursor.rowcount or 0)
+            connection.commit()
+        workspace = await jays_stats2_workspace(user)
+        return {
+            "action": action,
+            "updatedCount": updated_count,
+            "streamKey": stream_key,
+            "streamLabel": stream_label,
+            "workspace": workspace,
+        }
+    if action == "void":
+        now = utcnow()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE jays_stats2_transactions
+                    SET is_voided = TRUE,
+                        voided_at = %s,
+                        voided_by_user_id = %s
+                    WHERE user_id = %s
+                      AND tenant_id = %s
+                      AND is_voided = FALSE
+                      AND id = ANY(%s)
+                    """,
+                    (
+                        now,
+                        user_id,
+                        user_id,
+                        tenant_id,
+                        transaction_ids,
+                    ),
+                )
+                updated_count = int(cursor.rowcount or 0)
+            connection.commit()
+        workspace = await jays_stats2_workspace(user)
+        return {
+            "action": action,
+            "updatedCount": updated_count,
+            "workspace": workspace,
+        }
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported bulk action.")
+
+
+JAYS_STATS2_AI_BALANCE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["orderedIds", "gapCandidates", "notes"],
+    "properties": {
+        "orderedIds": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "gapCandidates": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "reason"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+            },
+        },
+        "notes": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+    },
+}
+
+
+async def jays_stats2_ai_balance_sort(user: dict, payload: dict | None = None) -> dict:
+    _ensure_jays_stats2_tables()
+    settings = get_settings()
+    body = payload if isinstance(payload, dict) else {}
+    source_rows = body.get("transactions")
+    rows: list[dict] = []
+    if isinstance(source_rows, list):
+        for item in source_rows[:600]:
+            if not isinstance(item, dict):
+                continue
+            tx_id = str(item.get("id") or "").strip()
+            if not tx_id:
+                continue
+            rows.append({
+                "id": tx_id,
+                "date": str(item.get("date") or ""),
+                "description": str(item.get("description") or ""),
+                "amount": float(_money(item.get("amount") or 0)),
+                "runningBalance": float(_money(item.get("runningBalance"))) if item.get("runningBalance") not in (None, "") else None,
+                "createdAt": str(item.get("createdAt") or ""),
+            })
+    if not rows:
+        workspace = await jays_stats2_workspace(user, limit=600, offset=0)
+        for item in (workspace.get("transactions") or [])[:600]:
+            if not isinstance(item, dict):
+                continue
+            rows.append({
+                "id": str(item.get("id") or ""),
+                "date": str(item.get("date") or ""),
+                "description": str(item.get("description") or ""),
+                "amount": float(_money(item.get("amount") or 0)),
+                "runningBalance": float(_money(item.get("runningBalance"))) if item.get("runningBalance") not in (None, "") else None,
+                "createdAt": str(item.get("createdAt") or ""),
+            })
+    rows = [row for row in rows if row.get("id")]
+    if not rows:
+        return {"orderedIds": [], "gapCandidates": [], "notes": ["No transactions available for balance analysis."], "usedModel": False}
+
+    local_order = sorted(
+        rows,
+        key=lambda row: (
+            str(row.get("date") or ""),
+            str(row.get("createdAt") or ""),
+            str(row.get("id") or ""),
+        ),
+    )
+    local_gap_report = _jays_stats2_running_balance_gap_report([
+        {
+            "date": item.get("date"),
+            "dateISO": item.get("date"),
+            "description": item.get("description"),
+            "amount": item.get("amount"),
+            "runningBalance": item.get("runningBalance"),
+            "sourceHash": item.get("id"),
+        }
+        for item in local_order
+    ])
+    local_gap_candidates = []
+    for gap in (local_gap_report.get("sample") or []):
+        reason = (
+            f"Expected {_jays_stats2_fmt_money(gap.get('expected') or 0)} "
+            f"but found {_jays_stats2_fmt_money(gap.get('actual') or 0)} "
+            f"(gap {_jays_stats2_fmt_money(gap.get('delta') or 0)})."
+        )
+        local_gap_candidates.append({"id": "", "reason": reason})
+
+    if not str(settings.openai_api_key or "").strip():
+        return {
+            "orderedIds": [str(item.get("id") or "") for item in local_order if str(item.get("id") or "")],
+            "gapCandidates": local_gap_candidates,
+            "notes": [
+                "OpenAI is not configured; using deterministic date ordering.",
+                f"Detected {int(local_gap_report.get('gapCount') or 0)} running-balance gap(s).",
+            ],
+            "usedModel": False,
+        }
+
+    request_body = {
+        "input": [{
+            "role": "user",
+            "content": [{
+                "type": "input_text",
+                "text": (
+                    "You are reviewing bank statement transactions.\n"
+                    "Task: reorder ids to produce the most plausible chronological running-balance chain.\n"
+                    "Use date and runningBalance clues. Keep all ids exactly once.\n"
+                    "Also return likely gap candidates where the running balance appears inconsistent.\n"
+                    f"Transactions JSON:\n{json.dumps(rows, default=_json_default)}"
+                ),
+            }],
+        }],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "jays_stats2_ai_balance_sort",
+                "schema": JAYS_STATS2_AI_BALANCE_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 3200,
+    }
+    try:
+        response_payload = await _post_openai_responses(
+            request_body,
+            "Cash Collection Tracker running balance ordering",
+            preferred_model=settings.openai_model,
+            timeout_seconds=45,
+            user_id=str(user.get("id") or ""),
+            feature="openai-core",
+            page="jays-stats-2",
+        )
+        parsed = _load_openai_json_response(response_payload, "OpenAI returned invalid JSON for running-balance ordering.")
+        ai_order = [str(item or "").strip() for item in (parsed.get("orderedIds") or []) if str(item or "").strip()]
+        seen = set()
+        ai_order = [item for item in ai_order if not (item in seen or seen.add(item))]
+        known_ids = [str(item.get("id") or "") for item in rows]
+        missing_ids = [item for item in known_ids if item and item not in set(ai_order)]
+        final_order = [item for item in ai_order if item in set(known_ids)] + missing_ids
+        gap_candidates = []
+        for item in (parsed.get("gapCandidates") or []):
+            if not isinstance(item, dict):
+                continue
+            gap_candidates.append({
+                "id": str(item.get("id") or "").strip(),
+                "reason": str(item.get("reason") or "").strip(),
+            })
+        notes = [str(item or "").strip() for item in (parsed.get("notes") or []) if str(item or "").strip()]
+        if not notes:
+            notes = [f"Detected {int(local_gap_report.get('gapCount') or 0)} running-balance gap(s) in deterministic baseline check."]
+        return {
+            "orderedIds": final_order,
+            "gapCandidates": gap_candidates[:30],
+            "notes": notes[:10],
+            "usedModel": True,
+        }
+    except Exception:
+        return {
+            "orderedIds": [str(item.get("id") or "") for item in local_order if str(item.get("id") or "")],
+            "gapCandidates": local_gap_candidates,
+            "notes": [
+                "AI ordering failed; using deterministic date ordering.",
+                f"Detected {int(local_gap_report.get('gapCount') or 0)} running-balance gap(s).",
+            ],
+            "usedModel": False,
+        }
 
 
 JAYS_STATS2_AI_CATEGORY_SCHEMA = {

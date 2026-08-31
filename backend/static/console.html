@@ -37506,6 +37506,9 @@
             #jaysStats2Screen .jays-stats-table.is-excel-grid tr.is-balance-warning td {
                 background: #fff7ea;
             }
+            #jaysStats2Screen .jays-stats-table.is-excel-grid tr.is-row-selected td {
+                background: #eef6ff;
+            }
             #jaysStats2Screen .jays-stats-excel-input,
             #jaysStats2Screen .jays-stats-excel-select {
                 width: 100%;
@@ -37646,6 +37649,17 @@
                 font-size: 0.78rem;
                 font-weight: 600;
                 padding: 5px 8px;
+            }
+            #jaysStats2Screen .jays-stats-table-toolbar input[type="search"],
+            #jaysStats2Screen .jays-stats-table-toolbar input[type="date"] {
+                border: 1px solid rgba(61, 85, 130, 0.24);
+                border-radius: 8px;
+                background: #fff;
+                color: #224470;
+                font-size: 0.78rem;
+                font-weight: 600;
+                padding: 5px 8px;
+                min-height: 30px;
             }
             #jaysStats2Screen .jays-stats-toggle {
                 display: inline-flex;
@@ -49486,9 +49500,18 @@
             let jaysStats2EditDrafts = {};
             let jaysStats2SavingTransactionIds = new Set();
             let jaysStats2Categorising = false;
+            let jaysStats2BulkBusy = false;
             let jaysStats2VisibleRowLimit = 250;
-            let jaysStats2HideDebitRows = false;
+            let jaysStats2HideDebitRows = true;
             let jaysStats2HideCategorisedRows = false;
+            let jaysStats2SearchQuery = "";
+            let jaysStats2FilterDateFrom = "";
+            let jaysStats2FilterDateTo = "";
+            let jaysStats2SortMode = "date-desc";
+            let jaysStats2SelectedIds = new Set();
+            let jaysStats2BulkStreamKey = "unclassified";
+            let jaysStats2AiOrderIds = [];
+            let jaysStats2AiBalanceNotes = [];
             const jaysStats2FetchLimit = 10000;
             let jaysStats2Workspace = {
                 account: { name: "JUK Trading Account", sortCode: "20-59-43", accountNumber: "93960404" },
@@ -50546,8 +50569,10 @@
                         jaysStats2Uploads: config.endpoints?.jaysStats2Uploads || "/api/jays-stats-2/uploads",
                         jaysStats2UpdateTransaction: config.endpoints?.jaysStats2UpdateTransaction || "/api/jays-stats-2/transactions/:transactionId",
                         jaysStats2VoidTransaction: config.endpoints?.jaysStats2VoidTransaction || "/api/jays-stats-2/transactions/:transactionId/void",
+                        jaysStats2BulkUpdate: config.endpoints?.jaysStats2BulkUpdate || "/api/jays-stats-2/transactions/bulk",
                         jaysStats2SetCategory: config.endpoints?.jaysStats2SetCategory || "/api/jays-stats-2/transactions/:transactionId/category",
                         jaysStats2CategoriseAi: config.endpoints?.jaysStats2CategoriseAi || "/api/jays-stats-2/categorise-ai",
+                        jaysStats2BalanceAiSort: config.endpoints?.jaysStats2BalanceAiSort || "/api/jays-stats-2/running-balance/ai-sort",
                         bankStatements: config.endpoints?.bankStatements || "/api/bank-statements",
                         bankStatementClients: config.endpoints?.bankStatementClients || "/api/bank-statements/clients",
                         bankStatementClient: config.endpoints?.bankStatementClient || "/api/bank-statements/clients/:clientId",
@@ -89089,6 +89114,8 @@
                             categoryStreams: Array.isArray(payload.categoryStreams) ? payload.categoryStreams : (jaysStats2Workspace.categoryStreams || []),
                             transactions: Array.isArray(payload.transactions) ? payload.transactions : [],
                         };
+                        jaysStats2SortMode = "date-desc";
+                        jaysStats2AiOrderIds = [];
                     }
                 } catch (error) {
                     if (!silent) showToast(error?.message || "Unable to load Cash Collection Tracker.", "error");
@@ -89116,6 +89143,8 @@
                     const payload = await requestFormData(api.endpoints.jaysStats2Uploads, formData, {}, { timeoutMs: 240000 });
                     if (payload?.workspace && typeof payload.workspace === "object") {
                         jaysStats2Workspace = payload.workspace;
+                        jaysStats2SortMode = "date-desc";
+                        jaysStats2AiOrderIds = [];
                     } else {
                         await loadJaysStats2({ silent: true });
                     }
@@ -89411,6 +89440,131 @@
                 return "Unclassified";
             }
 
+            function jaysStats2PruneSelection(validRows = []) {
+                const validIds = new Set((validRows || []).map((row) => String(row?.id || "")).filter(Boolean));
+                jaysStats2SelectedIds = new Set([...jaysStats2SelectedIds].filter((id) => validIds.has(id)));
+            }
+
+            function jaysStats2ToggleRowSelection(transactionId, selected) {
+                const txId = String(transactionId || "").trim();
+                if (!txId) return;
+                if (selected) jaysStats2SelectedIds.add(txId);
+                else jaysStats2SelectedIds.delete(txId);
+            }
+
+            function jaysStats2CompareRows(left, right, mode) {
+                const leftDate = String(left?.date || "");
+                const rightDate = String(right?.date || "");
+                const leftAmount = Number(left?.amount || 0);
+                const rightAmount = Number(right?.amount || 0);
+                const leftBalance = left?.runningBalance === null || left?.runningBalance === undefined ? Number.NEGATIVE_INFINITY : Number(left.runningBalance);
+                const rightBalance = right?.runningBalance === null || right?.runningBalance === undefined ? Number.NEGATIVE_INFINITY : Number(right.runningBalance);
+                if (mode === "date-asc") {
+                    if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
+                    return String(left?.id || "").localeCompare(String(right?.id || ""));
+                }
+                if (mode === "amount-desc") return rightAmount - leftAmount;
+                if (mode === "amount-asc") return leftAmount - rightAmount;
+                if (mode === "running-balance-desc") return rightBalance - leftBalance;
+                if (mode === "running-balance-asc") return leftBalance - rightBalance;
+                if (leftDate !== rightDate) return rightDate.localeCompare(leftDate);
+                return String(right?.id || "").localeCompare(String(left?.id || ""));
+            }
+
+            async function jaysStats2RunAiBalanceSort(rowsForAnalysis = []) {
+                if (jaysStats2BulkBusy) return;
+                const sourceRows = (Array.isArray(rowsForAnalysis) ? rowsForAnalysis : []).slice(0, 600).map((row) => ({
+                    id: String(row?.id || ""),
+                    date: String(row?.date || ""),
+                    description: String(row?.description || ""),
+                    amount: Number(row?.amount || 0),
+                    runningBalance: row?.runningBalance === null || row?.runningBalance === undefined ? null : Number(row.runningBalance),
+                    createdAt: String(row?.createdAt || ""),
+                })).filter((row) => row.id);
+                if (!sourceRows.length) return showToast("No rows available for AI balance sort.", "warning");
+                jaysStats2BulkBusy = true;
+                renderJaysStats2Screen();
+                try {
+                    const payload = await requestJSON(api.endpoints.jaysStats2BalanceAiSort, {
+                        method: "POST",
+                        body: JSON.stringify({ transactions: sourceRows }),
+                    });
+                    const orderedIds = Array.isArray(payload?.orderedIds) ? payload.orderedIds.map((id) => String(id || "")).filter(Boolean) : [];
+                    const notes = Array.isArray(payload?.notes) ? payload.notes.map((item) => String(item || "")).filter(Boolean) : [];
+                    jaysStats2AiOrderIds = orderedIds;
+                    jaysStats2AiBalanceNotes = notes;
+                    jaysStats2SortMode = "ai-balance";
+                    const gaps = Array.isArray(payload?.gapCandidates) ? payload.gapCandidates.length : 0;
+                    showToast(`AI balance sort completed for ${orderedIds.length.toLocaleString("en-GB")} rows. ${gaps.toLocaleString("en-GB")} gap hint(s) returned.`, "success");
+                } catch (error) {
+                    showToast(error?.message || "Unable to run AI balance sort.", "error");
+                } finally {
+                    jaysStats2BulkBusy = false;
+                    renderJaysStats2Screen();
+                }
+            }
+
+            async function jaysStats2BulkApplyCategory() {
+                const ids = [...jaysStats2SelectedIds];
+                if (!ids.length) return showToast("Select at least one row first.", "warning");
+                if (jaysStats2BulkBusy) return;
+                jaysStats2BulkBusy = true;
+                renderJaysStats2Screen();
+                try {
+                    const payload = await requestJSON(api.endpoints.jaysStats2BulkUpdate, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            action: "set-category",
+                            streamKey: jaysStats2BulkStreamKey || "unclassified",
+                            transactionIds: ids,
+                        }),
+                    });
+                    if (payload?.workspace && typeof payload.workspace === "object") {
+                        jaysStats2Workspace = payload.workspace;
+                    } else {
+                        await loadJaysStats2({ silent: true });
+                    }
+                    jaysStats2SelectedIds = new Set();
+                    showToast(`Updated ${Number(payload?.updatedCount || 0).toLocaleString("en-GB")} transaction(s).`, "success");
+                } catch (error) {
+                    showToast(error?.message || "Unable to apply bulk category update.", "error");
+                } finally {
+                    jaysStats2BulkBusy = false;
+                    renderJaysStats2Screen();
+                }
+            }
+
+            async function jaysStats2BulkVoid() {
+                const ids = [...jaysStats2SelectedIds];
+                if (!ids.length) return showToast("Select at least one row first.", "warning");
+                if (jaysStats2BulkBusy) return;
+                const confirmed = window.confirm(`Void ${ids.length.toLocaleString("en-GB")} selected transaction(s)?`);
+                if (!confirmed) return;
+                jaysStats2BulkBusy = true;
+                renderJaysStats2Screen();
+                try {
+                    const payload = await requestJSON(api.endpoints.jaysStats2BulkUpdate, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            action: "void",
+                            transactionIds: ids,
+                        }),
+                    });
+                    if (payload?.workspace && typeof payload.workspace === "object") {
+                        jaysStats2Workspace = payload.workspace;
+                    } else {
+                        await loadJaysStats2({ silent: true });
+                    }
+                    jaysStats2SelectedIds = new Set();
+                    showToast(`Voided ${Number(payload?.updatedCount || 0).toLocaleString("en-GB")} transaction(s).`, "success");
+                } catch (error) {
+                    showToast(error?.message || "Unable to void selected rows.", "error");
+                } finally {
+                    jaysStats2BulkBusy = false;
+                    renderJaysStats2Screen();
+                }
+            }
+
             async function jaysStats2UpdateCategory(transactionId, streamKey) {
                 const cleanId = String(transactionId || "").trim();
                 if (!cleanId) return;
@@ -89617,21 +89771,52 @@
                     <li>${escapeHTML(formatDate(String(row?.date || "")))} • ${escapeHTML(String(row?.description || ""))} • ${escapeHTML(formatCurrency(Number(row?.amount || 0)))} • ${escapeHTML(String(row?.fileName || ""))}</li>
                 `).join("");
                 const balanceWarnings = jaysStats2RunningBalanceWarnings(transactions);
+                const searchQuery = String(jaysStats2SearchQuery || "").trim().toLowerCase();
                 const filteredTransactions = transactions.filter((row) => {
                     const amount = Number(row?.amount || 0);
                     const streamKey = String(row?.categoryStreamKey || "").trim().toLowerCase();
+                    const dateValue = String(row?.date || "");
+                    const description = String(row?.description || "");
                     if (jaysStats2HideDebitRows && amount < 0) return false;
                     if (jaysStats2HideCategorisedRows && streamKey && streamKey !== "unclassified") return false;
+                    if (jaysStats2FilterDateFrom && dateValue && dateValue < jaysStats2FilterDateFrom) return false;
+                    if (jaysStats2FilterDateTo && dateValue && dateValue > jaysStats2FilterDateTo) return false;
+                    if (searchQuery) {
+                        const haystack = `${dateValue} ${description} ${streamKey} ${amount} ${row?.runningBalance ?? ""}`.toLowerCase();
+                        if (!haystack.includes(searchQuery)) return false;
+                    }
                     return true;
                 });
+                if (jaysStats2SortMode === "ai-balance") {
+                    const aiLookup = new Map((jaysStats2AiOrderIds || []).map((id, index) => [String(id), index]));
+                    filteredTransactions.sort((left, right) => {
+                        const leftId = String(left?.id || "");
+                        const rightId = String(right?.id || "");
+                        const leftIndex = aiLookup.has(leftId) ? Number(aiLookup.get(leftId)) : Number.MAX_SAFE_INTEGER;
+                        const rightIndex = aiLookup.has(rightId) ? Number(aiLookup.get(rightId)) : Number.MAX_SAFE_INTEGER;
+                        if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+                        return jaysStats2CompareRows(left, right, "date-asc");
+                    });
+                } else {
+                    filteredTransactions.sort((left, right) => jaysStats2CompareRows(left, right, jaysStats2SortMode));
+                }
                 const visibleTransactions = jaysStats2VisibleRowLimit > 0
                     ? filteredTransactions.slice(0, jaysStats2VisibleRowLimit)
                     : filteredTransactions;
+                const showRunningBalanceColumn = !jaysStats2HideDebitRows
+                    && !jaysStats2HideCategorisedRows
+                    && ["running-balance-desc", "running-balance-asc", "ai-balance"].includes(jaysStats2SortMode);
+                jaysStats2PruneSelection(visibleTransactions);
+                const selectedVisibleCount = visibleTransactions.reduce((count, row) => (
+                    jaysStats2SelectedIds.has(String(row?.id || "")) ? count + 1 : count
+                ), 0);
+                const allVisibleSelected = visibleTransactions.length > 0 && selectedVisibleCount === visibleTransactions.length;
                 const rows = visibleTransactions.map((row) => {
                     const txId = String(row?.id || "");
                     const draft = jaysStats2EditDrafts[txId] && typeof jaysStats2EditDrafts[txId] === "object" ? jaysStats2EditDrafts[txId] : {};
                     const warning = balanceWarnings.get(txId);
                     const saving = jaysStats2SavingTransactionIds.has(txId);
+                    const selected = jaysStats2SelectedIds.has(txId);
                     const dateValue = String(draft.date ?? row?.date ?? "");
                     const descriptionValue = String(draft.description ?? row?.description ?? "");
                     const amountValue = String(draft.amount ?? (row?.amount ?? ""));
@@ -89646,17 +89831,20 @@
                         ? `<span class="jays-stats-balance-warning" title="Expected ${escapeHTML(formatCurrency(warning.expected))}, actual ${escapeHTML(formatCurrency(warning.actual))}.">Gap ${escapeHTML(formatCurrency(warning.delta))}</span>`
                         : "";
                     return `
-                        <tr class="${warning ? "is-balance-warning" : ""}">
+                        <tr class="${warning ? "is-balance-warning" : ""} ${selected ? "is-row-selected" : ""}">
+                            <td><input type="checkbox" data-jays-stats2-select-id="${escapeHTML(txId)}" ${selected ? "checked" : ""} ${jaysStats2BulkBusy ? "disabled" : ""}></td>
                             <td><input class="jays-stats-excel-input" type="date" value="${escapeHTML(dateValue)}" data-jays-stats2-edit-field="date" data-jays-stats2-edit-id="${escapeHTML(txId)}" ${saving ? "disabled" : ""}></td>
                             <td><input class="jays-stats-excel-input" type="text" value="${escapeHTML(descriptionValue)}" data-jays-stats2-edit-field="description" data-jays-stats2-edit-id="${escapeHTML(txId)}" ${saving ? "disabled" : ""}></td>
                             <td><input class="jays-stats-excel-input is-number" type="text" value="${escapeHTML(amountValue)}" data-jays-stats2-edit-field="amount" data-jays-stats2-edit-id="${escapeHTML(txId)}" ${saving ? "disabled" : ""}></td>
+                            ${showRunningBalanceColumn ? `
                             <td>
                                 <input class="jays-stats-excel-input is-number" type="text" value="${escapeHTML(runningBalanceValue)}" data-jays-stats2-edit-field="runningBalance" data-jays-stats2-edit-id="${escapeHTML(txId)}" ${saving ? "disabled" : ""}>
                                 ${warningMarkup}
                             </td>
+                            ` : ""}
                             <td>
                                 <div class="jays-stats-category-cell">
-                                    <select class="jays-stats-excel-select" id="jaysStats2Category-${escapeHTML(txId)}" aria-label="Transaction category" data-jays-stats2-category-id="${escapeHTML(txId)}" ${jaysStats2Importing || jaysStats2Categorising || saving ? "disabled" : ""}>
+                                    <select class="jays-stats-excel-select" id="jaysStats2Category-${escapeHTML(txId)}" aria-label="Transaction category" data-jays-stats2-category-id="${escapeHTML(txId)}" ${jaysStats2Importing || jaysStats2Categorising || jaysStats2BulkBusy || saving ? "disabled" : ""}>
                                         ${categoryStreams.map((stream) => `<option value="${escapeHTML(String(stream?.key || ""))}" ${String(row?.categoryStreamKey || "") === String(stream?.key || "") ? "selected" : ""}>${escapeHTML(String(stream?.label || ""))}</option>`).join("")}
                                     </select>
                                     ${confidenceBubble}
@@ -89675,13 +89863,14 @@
                 const visibleWarningCount = visibleTransactions.reduce((count, row) => (
                     balanceWarnings.has(String(row?.id || "")) ? count + 1 : count
                 ), 0);
-                const warningSummaryCopy = visibleWarningCount
+                const warningSummaryCopy = showRunningBalanceColumn && visibleWarningCount
                     ? `${visibleWarningCount.toLocaleString("en-GB")} running balance warning${visibleWarningCount === 1 ? "" : "s"} highlighted in this view.`
                     : "";
                 const rowCountSummary = `Showing ${visibleTransactions.length.toLocaleString("en-GB")} of ${filteredTransactions.length.toLocaleString("en-GB")} filtered row${filteredTransactions.length === 1 ? "" : "s"} · ${transactions.length.toLocaleString("en-GB")} loaded`;
                 const serverCapWarning = workspaceWindow?.hasMore
                     ? `Server currently returned ${Number(workspaceWindow?.returnedCount || transactions.length).toLocaleString("en-GB")} rows. Increase API limit to load older transactions.`
                     : "";
+                const aiBalanceNotes = (jaysStats2AiBalanceNotes || []).slice(0, 3).map((note) => `<li>${escapeHTML(String(note || ""))}</li>`).join("");
                 const showImportExamplesModal = Boolean(importSummary && jaysStats2UploadSummaryModalOpen && jaysStats2UploadSummaryModalKey === String(importSummary?.summaryKey || ""));
                 panel.innerHTML = `
                     <section class="jays-stats-shell">
@@ -89715,23 +89904,52 @@
                                 <option value="1000" ${jaysStats2VisibleRowLimit === 1000 ? "selected" : ""}>1,000</option>
                                 <option value="all" ${jaysStats2VisibleRowLimit === 0 ? "selected" : ""}>All loaded</option>
                             </select>
+                            <label for="jaysStats2SortModeSelect">Sort</label>
+                            <select id="jaysStats2SortModeSelect">
+                                <option value="date-desc" ${jaysStats2SortMode === "date-desc" ? "selected" : ""}>Date (newest)</option>
+                                <option value="date-asc" ${jaysStats2SortMode === "date-asc" ? "selected" : ""}>Date (oldest)</option>
+                                <option value="amount-desc" ${jaysStats2SortMode === "amount-desc" ? "selected" : ""}>Amount (high to low)</option>
+                                <option value="amount-asc" ${jaysStats2SortMode === "amount-asc" ? "selected" : ""}>Amount (low to high)</option>
+                                <option value="running-balance-desc" ${jaysStats2SortMode === "running-balance-desc" ? "selected" : ""}>Running balance (high to low)</option>
+                                <option value="running-balance-asc" ${jaysStats2SortMode === "running-balance-asc" ? "selected" : ""}>Running balance (low to high)</option>
+                                <option value="ai-balance" ${jaysStats2SortMode === "ai-balance" ? "selected" : ""}>AI balance order</option>
+                            </select>
+                            <label for="jaysStats2SearchInput">Search</label>
+                            <input id="jaysStats2SearchInput" type="search" placeholder="Date, description, amount..." value="${escapeHTML(jaysStats2SearchQuery)}">
+                            <label for="jaysStats2FilterDateFrom">From</label>
+                            <input id="jaysStats2FilterDateFrom" type="date" value="${escapeHTML(jaysStats2FilterDateFrom)}">
+                            <label for="jaysStats2FilterDateTo">To</label>
+                            <input id="jaysStats2FilterDateTo" type="date" value="${escapeHTML(jaysStats2FilterDateTo)}">
                             <label class="jays-stats-toggle"><input type="checkbox" id="jaysStats2HideDebitsToggle" ${jaysStats2HideDebitRows ? "checked" : ""}> Hide debit rows</label>
                             <label class="jays-stats-toggle"><input type="checkbox" id="jaysStats2HideCategorisedToggle" ${jaysStats2HideCategorisedRows ? "checked" : ""}> Hide categorised rows</label>
                             <span class="jays-stats-table-count">${escapeHTML(rowCountSummary)}</span>
                         </section>
+                        <section class="jays-stats-table-toolbar">
+                            <label class="jays-stats-toggle"><input type="checkbox" id="jaysStats2SelectAllVisibleToggle" ${allVisibleSelected ? "checked" : ""} ${visibleTransactions.length ? "" : "disabled"}> Select visible (${visibleTransactions.length.toLocaleString("en-GB")})</label>
+                            <label for="jaysStats2BulkCategorySelect">Bulk category</label>
+                            <select id="jaysStats2BulkCategorySelect">
+                                ${categoryStreams.map((stream) => `<option value="${escapeHTML(String(stream?.key || ""))}" ${String(jaysStats2BulkStreamKey || "") === String(stream?.key || "") ? "selected" : ""}>${escapeHTML(String(stream?.label || ""))}</option>`).join("")}
+                            </select>
+                            <button class="ghost-button" id="jaysStats2BulkCategoryApplyButton" type="button" ${(jaysStats2SelectedIds.size === 0 || jaysStats2BulkBusy) ? "disabled" : ""}>Apply to selected (${jaysStats2SelectedIds.size.toLocaleString("en-GB")})</button>
+                            <button class="ghost-button" id="jaysStats2BulkVoidButton" type="button" ${(jaysStats2SelectedIds.size === 0 || jaysStats2BulkBusy) ? "disabled" : ""}>Void selected</button>
+                            <button class="ghost-button" id="jaysStats2ClearSelectionButton" type="button" ${jaysStats2SelectedIds.size === 0 ? "disabled" : ""}>Clear selection</button>
+                            <button class="ghost-button" id="jaysStats2AiBalanceSortButton" type="button" ${jaysStats2BulkBusy || visibleTransactions.length === 0 ? "disabled" : ""}>${jaysStats2BulkBusy ? "Working..." : "AI running-balance check"}</button>
+                        </section>
+                        ${aiBalanceNotes ? `<section class="jays-stats-settings-panel"><p class="eyebrow">AI balance notes</p><ul class="jays-stats-ai-list">${aiBalanceNotes}</ul></section>` : ""}
                         <section class="jays-stats-table-wrap is-excel">
                             <table class="jays-stats-table is-excel-grid">
                                 <thead>
                                     <tr>
+                                        <th style="width:42px;">Sel</th>
                                         <th>Date</th>
                                         <th>Description</th>
                                         <th>Amount</th>
-                                        <th>Running Balance</th>
+                                        ${showRunningBalanceColumn ? "<th>Running Balance</th>" : ""}
                                         <th>Category</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody>${rows || '<tr><td colspan="6" style="padding:10px;">No rows match current filters.</td></tr>'}</tbody>
+                                <tbody>${rows || `<tr><td colspan="${showRunningBalanceColumn ? 7 : 6}" style="padding:10px;">No rows match current filters.</td></tr>`}</tbody>
                             </table>
                         </section>
                         ${showImportExamplesModal ? `
@@ -89793,6 +90011,60 @@
                 document.getElementById("jaysStats2HideCategorisedToggle")?.addEventListener("change", (event) => {
                     jaysStats2HideCategorisedRows = Boolean(event?.target?.checked);
                     renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2SortModeSelect")?.addEventListener("change", (event) => {
+                    jaysStats2SortMode = String(event?.target?.value || "date-desc");
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2SearchInput")?.addEventListener("input", (event) => {
+                    jaysStats2SearchQuery = String(event?.target?.value || "");
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2FilterDateFrom")?.addEventListener("change", (event) => {
+                    jaysStats2FilterDateFrom = String(event?.target?.value || "");
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2FilterDateTo")?.addEventListener("change", (event) => {
+                    jaysStats2FilterDateTo = String(event?.target?.value || "");
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2SelectAllVisibleToggle")?.addEventListener("change", (event) => {
+                    const shouldSelect = Boolean(event?.target?.checked);
+                    if (shouldSelect) {
+                        visibleTransactions.forEach((row) => {
+                            const txId = String(row?.id || "");
+                            if (txId) jaysStats2SelectedIds.add(txId);
+                        });
+                    } else {
+                        visibleTransactions.forEach((row) => {
+                            const txId = String(row?.id || "");
+                            if (txId) jaysStats2SelectedIds.delete(txId);
+                        });
+                    }
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2BulkCategorySelect")?.addEventListener("change", (event) => {
+                    jaysStats2BulkStreamKey = String(event?.target?.value || "unclassified");
+                });
+                document.getElementById("jaysStats2BulkCategoryApplyButton")?.addEventListener("click", () => {
+                    jaysStats2BulkApplyCategory();
+                });
+                document.getElementById("jaysStats2BulkVoidButton")?.addEventListener("click", () => {
+                    jaysStats2BulkVoid();
+                });
+                document.getElementById("jaysStats2ClearSelectionButton")?.addEventListener("click", () => {
+                    jaysStats2SelectedIds = new Set();
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2AiBalanceSortButton")?.addEventListener("click", () => {
+                    jaysStats2RunAiBalanceSort(filteredTransactions);
+                });
+                panel.querySelectorAll("[data-jays-stats2-select-id]").forEach((element) => {
+                    element.addEventListener("change", (event) => {
+                        const txId = String(event?.target?.dataset?.jaysStats2SelectId || "");
+                        jaysStats2ToggleRowSelection(txId, Boolean(event?.target?.checked));
+                        renderJaysStats2Screen();
+                    });
                 });
                 panel.querySelectorAll("[data-jays-stats2-category-id]").forEach((element) => {
                     element.addEventListener("change", (event) => {

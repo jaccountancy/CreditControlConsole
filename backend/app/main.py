@@ -164,6 +164,8 @@ from .services import (
     jays_stats_budget_publish,
     jays_stats_budget_workspace,
     jays_stats2_ai_categorise,
+    jays_stats2_ai_balance_sort,
+    jays_stats2_bulk_update,
     jays_stats2_import_transactions,
     jays_stats2_void_transaction,
     jays_stats2_update_transaction,
@@ -5272,6 +5274,24 @@ async def api_jays_stats2_void_transaction_record(
     user: dict = Depends(require_panel_user),
 ):
     return {"status": "ok", **await jays_stats2_void_transaction(user, transaction_id)}
+
+
+@app.post("/api/jays-stats-2/transactions/bulk")
+async def api_jays_stats2_bulk_update(
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", **await jays_stats2_bulk_update(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/jays-stats-2/running-balance/ai-sort")
+async def api_jays_stats2_running_balance_ai_sort(
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", **await jays_stats2_ai_balance_sort(user, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/jays-stats-2/categorise-ai")
