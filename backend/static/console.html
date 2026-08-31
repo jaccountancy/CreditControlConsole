@@ -37719,6 +37719,14 @@
                 font-size: 0.75rem;
                 font-weight: 620;
             }
+            #jaysStats2Screen .jays-stats-search-wrap {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }
+            #jaysStats2Screen .jays-stats-search-wrap input[type="search"] {
+                min-width: 220px;
+            }
             #jaysStats2Screen .jays-stats-report-total-row td {
                 background: #eef6ff !important;
             }
@@ -49559,9 +49567,11 @@
             let jaysStats2HideDebitRows = true;
             let jaysStats2HideCategorisedRows = false;
             let jaysStats2SearchQuery = "";
+            let jaysStats2SearchExpanded = false;
             let jaysStats2FilterDateFrom = "";
             let jaysStats2FilterDateTo = "";
             let jaysStats2SortMode = "date-desc";
+            let jaysStats2CurrentPage = 1;
             let jaysStats2SelectedIds = new Set();
             let jaysStats2BulkStreamKey = "unclassified";
             let jaysStats2AiOrderIds = [];
@@ -89174,6 +89184,7 @@
                             transactions: Array.isArray(payload.transactions) ? payload.transactions : [],
                         };
                         jaysStats2SortMode = "date-desc";
+                        jaysStats2CurrentPage = 1;
                         jaysStats2AiOrderIds = [];
                     }
                 } catch (error) {
@@ -89362,6 +89373,7 @@
                     if (payload?.workspace && typeof payload.workspace === "object") {
                         jaysStats2Workspace = payload.workspace;
                         jaysStats2SortMode = "date-desc";
+                        jaysStats2CurrentPage = 1;
                         jaysStats2AiOrderIds = [];
                     } else {
                         await loadJaysStats2({ silent: true });
@@ -89796,6 +89808,8 @@
                 return {
                     ignitionBnaeom: Math.max(0, Number(item?.ignitionBnaeom || 0)),
                     bankTransfersBnaeom: Math.max(0, Number(item?.bankTransfersBnaeom || 0)),
+                    cashAtBankNow: Math.max(0, Number(item?.cashAtBankNow || 0)),
+                    wagesBeforeMonthEnd: Math.max(0, Number(item?.wagesBeforeMonthEnd || 0)),
                     notes: String(item?.notes || "").trim(),
                 };
             }
@@ -89806,6 +89820,8 @@
                 const next = {
                     ignitionBnaeom: Math.max(0, Number(payload?.ignitionBnaeom || 0)),
                     bankTransfersBnaeom: Math.max(0, Number(payload?.bankTransfersBnaeom || 0)),
+                    cashAtBankNow: Math.max(0, Number(payload?.cashAtBankNow || 0)),
+                    wagesBeforeMonthEnd: Math.max(0, Number(payload?.wagesBeforeMonthEnd || 0)),
                     notes: String(payload?.notes || "").trim().slice(0, 400),
                     updatedAt: new Date().toISOString(),
                 };
@@ -89973,6 +89989,12 @@
                 const reportingActuals = jaysStats2ReportingActuals(selectedMonthRows);
                 const reportingEstimates = jaysStats2ReportingEstimateForMonth(jaysStats2SelectedMonthKey || "");
                 const reportingProjectedTotal = selectedMonthCreditTotal + Number(reportingEstimates.ignitionBnaeom || 0) + Number(reportingEstimates.bankTransfersBnaeom || 0);
+                const reportingRemainingInflow = Number(reportingEstimates.ignitionBnaeom || 0) + Number(reportingEstimates.bankTransfersBnaeom || 0);
+                const reportingCashAtBankNow = Number(reportingEstimates.cashAtBankNow || 0);
+                const reportingWagesBeforeMonthEnd = Number(reportingEstimates.wagesBeforeMonthEnd || 0);
+                const reportingProjectedPreWages = reportingCashAtBankNow + reportingRemainingInflow;
+                const reportingProjectedAfterWages = reportingProjectedPreWages - reportingWagesBeforeMonthEnd;
+                const reportingCashShortfall = reportingProjectedAfterWages < 0 ? Math.abs(reportingProjectedAfterWages) : 0;
                 const importSummary = jaysStats2LastImportSummary && typeof jaysStats2LastImportSummary === "object"
                     ? jaysStats2LastImportSummary
                     : null;
@@ -90013,9 +90035,18 @@
                 } else {
                     filteredTransactions.sort((left, right) => jaysStats2CompareRows(left, right, jaysStats2SortMode));
                 }
-                const visibleTransactions = jaysStats2VisibleRowLimit > 0
-                    ? filteredTransactions.slice(0, jaysStats2VisibleRowLimit)
-                    : filteredTransactions;
+                const pageSize = Number(jaysStats2VisibleRowLimit || 0) > 0 ? Number(jaysStats2VisibleRowLimit || 0) : 0;
+                const totalPages = pageSize > 0
+                    ? Math.max(1, Math.ceil(filteredTransactions.length / pageSize))
+                    : 1;
+                jaysStats2CurrentPage = Math.max(1, Math.min(Number(jaysStats2CurrentPage || 1), totalPages));
+                const pageStart = pageSize > 0 ? (jaysStats2CurrentPage - 1) * pageSize : 0;
+                const pageEnd = pageSize > 0 ? pageStart + pageSize : filteredTransactions.length;
+                const visibleTransactions = filteredTransactions.slice(pageStart, pageEnd);
+                const canPageBack = pageSize > 0 && jaysStats2CurrentPage > 1;
+                const canPageNext = pageSize > 0 && jaysStats2CurrentPage < totalPages;
+                const showingFrom = filteredTransactions.length ? (pageStart + 1) : 0;
+                const showingTo = filteredTransactions.length ? Math.min(filteredTransactions.length, pageEnd) : 0;
                 const showRunningBalanceColumn = !jaysStats2HideDebitRows
                     && !jaysStats2HideCategorisedRows
                     && ["running-balance-desc", "running-balance-asc", "ai-balance"].includes(jaysStats2SortMode);
@@ -90079,12 +90110,13 @@
                 const warningSummaryCopy = showRunningBalanceColumn && visibleWarningCount
                     ? `${visibleWarningCount.toLocaleString("en-GB")} running balance warning${visibleWarningCount === 1 ? "" : "s"} highlighted in this view.`
                     : "";
-                const rowCountSummary = `Showing ${visibleTransactions.length.toLocaleString("en-GB")} of ${filteredTransactions.length.toLocaleString("en-GB")} filtered row${filteredTransactions.length === 1 ? "" : "s"} · ${transactions.length.toLocaleString("en-GB")} loaded`;
+                const rowCountSummary = `Showing ${showingFrom.toLocaleString("en-GB")}-${showingTo.toLocaleString("en-GB")} of ${filteredTransactions.length.toLocaleString("en-GB")} filtered row${filteredTransactions.length === 1 ? "" : "s"} · ${transactions.length.toLocaleString("en-GB")} loaded`;
                 const serverCapWarning = workspaceWindow?.hasMore
                     ? `Server currently returned ${Number(workspaceWindow?.returnedCount || transactions.length).toLocaleString("en-GB")} rows. Increase API limit to load older transactions.`
                     : "";
                 const aiBalanceNotes = (jaysStats2AiBalanceNotes || []).slice(0, 3).map((note) => `<li>${escapeHTML(String(note || ""))}</li>`).join("");
                 const showImportExamplesModal = Boolean(importSummary && jaysStats2UploadSummaryModalOpen && jaysStats2UploadSummaryModalKey === String(importSummary?.summaryKey || ""));
+                const searchExpanded = jaysStats2SearchExpanded || Boolean(String(jaysStats2SearchQuery || "").trim());
                 const previewRows = Array.isArray(jaysStats2ImportWizardRows) ? jaysStats2ImportWizardRows : [];
                 const previewIncludedCount = previewRows.reduce((count, row) => (row?.include ? count + 1 : count), 0);
                 const previewExcludedCount = Math.max(0, previewRows.length - previewIncludedCount);
@@ -90208,19 +90240,61 @@
                                 <button class="ghost-button" id="jaysStats2ReportingEstimateResetButton" type="button">Reset</button>
                             </section>
                             ` : (reportingEstimates.notes ? `<p class="jays-stats-meta-note"><strong>Estimate notes:</strong> ${escapeHTML(reportingEstimates.notes)}</p>` : "")}
+                            <section class="jays-stats-table-wrap is-excel">
+                                <table class="jays-stats-table is-excel-grid">
+                                    <thead>
+                                        <tr>
+                                            <th>Cash availability line</th>
+                                            <th>Value</th>
+                                            <th>How this is used</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td style="padding:10px;"><strong>Current cash at bank</strong></td>
+                                            <td style="padding:10px;">
+                                                ${jaysStats2ReportingEstimateEditorOpen
+                                                    ? `<input class="jays-stats-excel-input is-number" id="jaysStats2ReportingCashAtBankInput" type="text" value="${escapeHTML(String(Number(reportingCashAtBankNow || 0).toFixed(2)))}">`
+                                                    : `<strong>${escapeHTML(formatCurrency(reportingCashAtBankNow))}</strong>`}
+                                            </td>
+                                            <td style="padding:10px;">Manual input from bank position now</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px;"><strong>Expected inflow between now and month end</strong></td>
+                                            <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingRemainingInflow))}</strong></td>
+                                            <td style="padding:10px;">Ignition BNAEOM + Bank transfers BNAEOM</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px;"><strong>Projected cash before wages</strong></td>
+                                            <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingProjectedPreWages))}</strong></td>
+                                            <td style="padding:10px;">Current cash at bank + expected inflow remaining</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px;"><strong>Planned wages to pay before month end</strong></td>
+                                            <td style="padding:10px;">
+                                                ${jaysStats2ReportingEstimateEditorOpen
+                                                    ? `<input class="jays-stats-excel-input is-number" id="jaysStats2ReportingWagesInput" type="text" value="${escapeHTML(String(Number(reportingWagesBeforeMonthEnd || 0).toFixed(2)))}">`
+                                                    : `<strong>${escapeHTML(formatCurrency(reportingWagesBeforeMonthEnd))}</strong>`}
+                                            </td>
+                                            <td style="padding:10px;">Manual wages forecast</td>
+                                        </tr>
+                                        <tr class="jays-stats-report-total-row">
+                                            <td style="padding:10px;"><strong>Projected cash after wages</strong></td>
+                                            <td style="padding:10px;"><strong>${escapeHTML(formatCurrency(reportingProjectedAfterWages))}</strong></td>
+                                            <td style="padding:10px;">
+                                                ${reportingCashShortfall > 0
+                                                    ? `<span class="jays-stats-balance-warning">Shortfall risk: ${escapeHTML(formatCurrency(reportingCashShortfall))}</span>`
+                                                    : '<span class="jays-stats-confidence-bubble is-high">No shortfall forecast</span>'}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </section>
                         </section>
                         <section ${jaysStats2ReportingMode ? "hidden" : ""}>
                         ${serverCapWarning ? `<p class="jays-stats-inline-warning">${escapeHTML(serverCapWarning)}</p>` : ""}
                         ${warningSummaryCopy ? `<p class="jays-stats-inline-warning">${escapeHTML(warningSummaryCopy)}</p>` : ""}
                         <section class="jays-stats-table-toolbar">
-                            <label for="jaysStats2RowLimitSelect">Show rows</label>
-                            <select id="jaysStats2RowLimitSelect">
-                                <option value="100" ${jaysStats2VisibleRowLimit === 100 ? "selected" : ""}>100</option>
-                                <option value="250" ${jaysStats2VisibleRowLimit === 250 ? "selected" : ""}>250</option>
-                                <option value="500" ${jaysStats2VisibleRowLimit === 500 ? "selected" : ""}>500</option>
-                                <option value="1000" ${jaysStats2VisibleRowLimit === 1000 ? "selected" : ""}>1,000</option>
-                                <option value="all" ${jaysStats2VisibleRowLimit === 0 ? "selected" : ""}>All loaded</option>
-                            </select>
                             <label for="jaysStats2SortModeSelect">Sort</label>
                             <select id="jaysStats2SortModeSelect">
                                 <option value="date-desc" ${jaysStats2SortMode === "date-desc" ? "selected" : ""}>Date (newest)</option>
@@ -90231,8 +90305,10 @@
                                 <option value="running-balance-asc" ${jaysStats2SortMode === "running-balance-asc" ? "selected" : ""}>Running balance (low to high)</option>
                                 <option value="ai-balance" ${jaysStats2SortMode === "ai-balance" ? "selected" : ""}>AI balance order</option>
                             </select>
-                            <label for="jaysStats2SearchInput">Search</label>
-                            <input id="jaysStats2SearchInput" type="search" placeholder="Date, description, amount..." value="${escapeHTML(jaysStats2SearchQuery)}">
+                            <div class="jays-stats-search-wrap">
+                                <button class="ghost-button" id="jaysStats2SearchToggleButton" type="button">${searchExpanded ? "Hide search" : "Search"}</button>
+                                ${searchExpanded ? `<input id="jaysStats2SearchInput" type="search" placeholder="Date, description, amount..." value="${escapeHTML(jaysStats2SearchQuery)}">` : ""}
+                            </div>
                             <label for="jaysStats2FilterDateFrom">From</label>
                             <input id="jaysStats2FilterDateFrom" type="date" value="${escapeHTML(jaysStats2FilterDateFrom)}">
                             <label for="jaysStats2FilterDateTo">To</label>
@@ -90270,6 +90346,19 @@
                                 </thead>
                                 <tbody>${rows || `<tr><td colspan="${showRunningBalanceColumn ? 7 : 6}" style="padding:10px;">No rows match current filters.</td></tr>`}</tbody>
                             </table>
+                        </section>
+                        <section class="jays-stats-table-toolbar">
+                            <label for="jaysStats2RowLimitSelect">Show rows</label>
+                            <select id="jaysStats2RowLimitSelect">
+                                <option value="100" ${jaysStats2VisibleRowLimit === 100 ? "selected" : ""}>100</option>
+                                <option value="250" ${jaysStats2VisibleRowLimit === 250 ? "selected" : ""}>250</option>
+                                <option value="500" ${jaysStats2VisibleRowLimit === 500 ? "selected" : ""}>500</option>
+                                <option value="1000" ${jaysStats2VisibleRowLimit === 1000 ? "selected" : ""}>1,000</option>
+                                <option value="all" ${jaysStats2VisibleRowLimit === 0 ? "selected" : ""}>All loaded</option>
+                            </select>
+                            <button class="ghost-button" id="jaysStats2PageBackButton" type="button" ${canPageBack ? "" : "disabled"}>Back</button>
+                            <button class="ghost-button" id="jaysStats2PageNextButton" type="button" ${canPageNext ? "" : "disabled"}>Next</button>
+                            <span class="jays-stats-table-count">Page ${jaysStats2CurrentPage.toLocaleString("en-GB")} of ${totalPages.toLocaleString("en-GB")}</span>
                         </section>
                         </section>
                         ${showImportExamplesModal ? `
@@ -90380,16 +90469,31 @@
                     }
                     const ignitionInput = document.getElementById("jaysStats2ReportingEstimateIgnitionInput");
                     const bankInput = document.getElementById("jaysStats2ReportingEstimateBankInput");
+                    const cashAtBankInput = document.getElementById("jaysStats2ReportingCashAtBankInput");
+                    const wagesInput = document.getElementById("jaysStats2ReportingWagesInput");
                     const notesInput = document.getElementById("jaysStats2ReportingEstimateNotesInput");
-                    const ignitionValue = jaysStats2MoneyInputValue(ignitionInput?.value ?? "");
-                    const bankValue = jaysStats2MoneyInputValue(bankInput?.value ?? "");
-                    if ((ignitionInput && !Number.isFinite(ignitionValue)) || (bankInput && !Number.isFinite(bankValue))) {
+                    const ignitionRaw = jaysStats2MoneyInputValue(ignitionInput?.value ?? "");
+                    const bankRaw = jaysStats2MoneyInputValue(bankInput?.value ?? "");
+                    const cashAtBankRaw = jaysStats2MoneyInputValue(cashAtBankInput?.value ?? "");
+                    const wagesRaw = jaysStats2MoneyInputValue(wagesInput?.value ?? "");
+                    if (
+                        (ignitionRaw !== null && !Number.isFinite(ignitionRaw))
+                        || (bankRaw !== null && !Number.isFinite(bankRaw))
+                        || (cashAtBankRaw !== null && !Number.isFinite(cashAtBankRaw))
+                        || (wagesRaw !== null && !Number.isFinite(wagesRaw))
+                    ) {
                         showToast("Estimate values must be valid numbers.", "error");
                         return;
                     }
+                    const ignitionValue = ignitionRaw === null ? 0 : Number(ignitionRaw);
+                    const bankValue = bankRaw === null ? 0 : Number(bankRaw);
+                    const cashAtBankValue = cashAtBankRaw === null ? 0 : Number(cashAtBankRaw);
+                    const wagesValue = wagesRaw === null ? 0 : Number(wagesRaw);
                     jaysStats2SaveReportingEstimateForMonth(monthKey, {
                         ignitionBnaeom: Math.max(0, Number(ignitionValue || 0)),
                         bankTransfersBnaeom: Math.max(0, Number(bankValue || 0)),
+                        cashAtBankNow: Math.max(0, Number(cashAtBankValue || 0)),
+                        wagesBeforeMonthEnd: Math.max(0, Number(wagesValue || 0)),
                         notes: String(notesInput?.value || ""),
                     });
                     jaysStats2ReportingEstimateEditorOpen = false;
@@ -90402,6 +90506,8 @@
                     jaysStats2SaveReportingEstimateForMonth(monthKey, {
                         ignitionBnaeom: 0,
                         bankTransfersBnaeom: 0,
+                        cashAtBankNow: 0,
+                        wagesBeforeMonthEnd: 0,
                         notes: "",
                     });
                     showToast("Reporting estimates reset.", "success");
@@ -90457,6 +90563,7 @@
                 });
                 document.getElementById("jaysStats2MonthSelect")?.addEventListener("change", (event) => {
                     jaysStats2SelectedMonthKey = String(event?.target?.value || "");
+                    jaysStats2CurrentPage = 1;
                     renderJaysStats2Screen();
                 });
                 document.getElementById("jaysStats2RowLimitSelect")?.addEventListener("change", (event) => {
@@ -90467,30 +90574,63 @@
                         const parsed = Number.parseInt(value, 10);
                         jaysStats2VisibleRowLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : 250;
                     }
+                    jaysStats2CurrentPage = 1;
                     renderJaysStats2Screen();
                 });
                 document.getElementById("jaysStats2HideDebitsToggle")?.addEventListener("change", (event) => {
                     jaysStats2HideDebitRows = Boolean(event?.target?.checked);
+                    jaysStats2CurrentPage = 1;
                     renderJaysStats2Screen();
                 });
                 document.getElementById("jaysStats2HideCategorisedToggle")?.addEventListener("change", (event) => {
                     jaysStats2HideCategorisedRows = Boolean(event?.target?.checked);
+                    jaysStats2CurrentPage = 1;
                     renderJaysStats2Screen();
                 });
                 document.getElementById("jaysStats2SortModeSelect")?.addEventListener("change", (event) => {
                     jaysStats2SortMode = String(event?.target?.value || "date-desc");
+                    jaysStats2CurrentPage = 1;
                     renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2SearchToggleButton")?.addEventListener("click", () => {
+                    if (jaysStats2SearchExpanded && !String(jaysStats2SearchQuery || "").trim()) {
+                        jaysStats2SearchExpanded = false;
+                    } else if (!jaysStats2SearchExpanded) {
+                        jaysStats2SearchExpanded = true;
+                    } else {
+                        jaysStats2SearchExpanded = false;
+                        jaysStats2SearchQuery = "";
+                        jaysStats2CurrentPage = 1;
+                    }
+                    renderJaysStats2Screen();
+                    if (jaysStats2SearchExpanded) {
+                        window.setTimeout(() => {
+                            document.getElementById("jaysStats2SearchInput")?.focus();
+                        }, 0);
+                    }
                 });
                 document.getElementById("jaysStats2SearchInput")?.addEventListener("input", (event) => {
                     jaysStats2SearchQuery = String(event?.target?.value || "");
+                    if (jaysStats2SearchQuery.trim()) jaysStats2SearchExpanded = true;
+                    jaysStats2CurrentPage = 1;
                     renderJaysStats2Screen();
                 });
                 document.getElementById("jaysStats2FilterDateFrom")?.addEventListener("change", (event) => {
                     jaysStats2FilterDateFrom = String(event?.target?.value || "");
+                    jaysStats2CurrentPage = 1;
                     renderJaysStats2Screen();
                 });
                 document.getElementById("jaysStats2FilterDateTo")?.addEventListener("change", (event) => {
                     jaysStats2FilterDateTo = String(event?.target?.value || "");
+                    jaysStats2CurrentPage = 1;
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2PageBackButton")?.addEventListener("click", () => {
+                    jaysStats2CurrentPage = Math.max(1, Number(jaysStats2CurrentPage || 1) - 1);
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2PageNextButton")?.addEventListener("click", () => {
+                    jaysStats2CurrentPage = Math.max(1, Number(jaysStats2CurrentPage || 1) + 1);
                     renderJaysStats2Screen();
                 });
                 document.getElementById("jaysStats2SelectAllVisibleToggle")?.addEventListener("change", (event) => {
