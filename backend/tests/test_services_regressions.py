@@ -2389,6 +2389,84 @@ class ServicesRegressionTests(unittest.TestCase):
         self.assertTrue(pension_rows)
         self.assertEqual(pension_rows[0].get("applicableLineCount"), 2)
 
+    def test_delete_pi_clearing_run_allows_locked_month_and_cleans_local_records(self):
+        class _SelectCursor:
+            def __init__(self):
+                self._fetched = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def execute(self, _query, _params=None):
+                return None
+
+            def fetchone(self):
+                if self._fetched:
+                    return {}
+                self._fetched = True
+                return {
+                    "id": "run-2",
+                    "user_id": "user-1",
+                    "tenant_id": "tenant-1",
+                    "month_start": date(2026, 2, 1),
+                    "month_end": date(2026, 2, 28),
+                }
+
+        class _DeleteCursor:
+            def __init__(self):
+                self.executed = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def execute(self, query, params=None):
+                self.executed.append((str(query or ""), params))
+
+            def fetchone(self):
+                return {}
+
+        class _Conn:
+            def __init__(self, cursor_obj):
+                self._cursor_obj = cursor_obj
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def cursor(self):
+                return self._cursor_obj
+
+            def commit(self):
+                return None
+
+        select_cursor = _SelectCursor()
+        delete_cursor = _DeleteCursor()
+        conn_sequence = [_Conn(select_cursor), _Conn(delete_cursor)]
+
+        def _next_conn():
+            return conn_sequence.pop(0)
+
+        with patch.object(services, "get_connection", side_effect=_next_conn), \
+             patch.object(services, "pi_clearing_payload", return_value={"runs": []}), \
+             patch.object(services, "_pi_assert_requested_open_month", side_effect=AssertionError("gate should not run on delete")):
+            result = asyncio.run(services.delete_pi_clearing_run({"id": "user-1"}, "run-2"))
+
+        self.assertEqual(result.get("deletedRunId"), "run-2")
+        self.assertEqual(result.get("runs"), [])
+        all_queries = "\n".join(item[0] for item in delete_cursor.executed)
+        self.assertIn("DELETE FROM pi_clearing_action_approvals", all_queries)
+        self.assertIn("DELETE FROM pi_clearing_credit_notes", all_queries)
+        self.assertIn("DELETE FROM pi_clearing_run_rows", all_queries)
+        self.assertIn("DELETE FROM pi_clearing_runs", all_queries)
+
 
 if __name__ == "__main__":
     unittest.main()

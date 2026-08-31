@@ -47,6 +47,7 @@ UNAPPROVED_ACCOUNT_MESSAGE = (
     "Please contact Jay Wilson or an administrator."
 )
 SUSPENDED_ACCOUNT_MESSAGE = "Your Jenius Tools account is suspended. Please contact Jay Wilson or an administrator."
+ALLOWED_LOGIN_EMAIL_DOMAIN = "jaccountancy.co.uk"
 
 class XeroConfigurationError(RuntimeError):
     pass
@@ -531,6 +532,15 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
             detail={"message": "Xero login did not include a valid user identifier."},
         )
     email = profile.get("email") or f"{xero_user_id}@xero.local"
+    email_normalised = str(email or "").strip().lower()
+    if not email_normalised.endswith(f"@{ALLOWED_LOGIN_EMAIL_DOMAIN}"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "message": "Only @jaccountancy.co.uk email addresses can sign in.",
+                "code": "EMAIL_DOMAIN_NOT_ALLOWED",
+            },
+        )
     full_name = (
         profile.get("name")
         or " ".join(part for part in [profile.get("given_name"), profile.get("family_name")] if part)
@@ -545,7 +555,7 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
                 FROM users
                 WHERE lower(email) = lower(%s)
                 """,
-                (email,),
+                (email_normalised,),
             )
             user = cursor.fetchone()
             if user is None:

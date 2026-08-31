@@ -5607,10 +5607,14 @@ async def api_upload_bank_statement(
     account_id: str,
     background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
+    import_mode: str = Form("missing-only", alias="importMode"),
     user: dict = Depends(require_panel_user),
 ):
     if not files:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload at least one PDF bank statement.")
+    import_mode_value = str(import_mode or "missing-only").strip().lower()
+    if import_mode_value != "missing-only":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only missing-only import mode is supported.")
     result = bank_statement_payload(user)
     for upload in files:
         content = await upload.read()
@@ -5620,6 +5624,7 @@ async def api_upload_bank_statement(
             upload.filename or "bank-statement.pdf",
             upload.content_type or "application/pdf",
             content,
+            import_mode=import_mode_value,
         )
         background_tasks.add_task(
             _process_bank_statement_upload,
@@ -5629,6 +5634,7 @@ async def api_upload_bank_statement(
             upload.filename or "bank-statement.pdf",
             upload.content_type or "application/pdf",
             content,
+            import_mode_value,
         )
     return {"status": "ok", "bankStatements": result}
 
@@ -5648,6 +5654,7 @@ async def api_retry_bank_statement_upload(
         filename,
         content_type,
         file_bytes,
+        "missing-only",
         True,
     )
     return {"status": "ok", "bankStatements": result}

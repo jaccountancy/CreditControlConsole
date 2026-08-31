@@ -10845,22 +10845,55 @@ async def delete_pi_clearing_run(user: dict, run_id: str, payload: dict | None =
             if not run_row:
                 updated = pi_clearing_payload(user)
                 return {"deletedRunId": requested_run_id, "alreadyDeleted": True, "runs": updated.get("runs") or []}
-            tenant_id = str(run_row.get("tenant_id") or "").strip()
-            month_start = run_row.get("month_start")
-            month_end = run_row.get("month_end")
-            if tenant_id and isinstance(month_start, date) and isinstance(month_end, date):
-                _pi_assert_requested_open_month(
-                    cursor,
-                    user_id=user["id"],
-                    tenant_id=tenant_id,
-                    requested_start=_pi_month_start(month_start),
-                    requested_end=month_end,
-                )
             resolved_run_id = str(run_row.get("id") or requested_run_id).strip()
         connection.commit()
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            # Local-only cleanup. This intentionally does not touch posted Xero documents.
+            # Keep this explicit so old schemas without full FK cascades still delete cleanly.
+            cursor.execute(
+                """
+                UPDATE pi_clearing_month_states
+                SET close_run_id = NULL, updated_at = NOW()
+                WHERE user_id = %s
+                  AND close_run_id::text = %s
+                """,
+                (user["id"], resolved_run_id),
+            )
+            cursor.execute(
+                """
+                UPDATE pi_clearing_month_closes
+                SET close_run_id = NULL
+                WHERE user_id = %s
+                  AND close_run_id::text = %s
+                """,
+                (user["id"], resolved_run_id),
+            )
+            cursor.execute(
+                """
+                DELETE FROM pi_clearing_action_approvals
+                WHERE user_id = %s
+                  AND run_id::text = %s
+                """,
+                (user["id"], resolved_run_id),
+            )
+            cursor.execute(
+                """
+                DELETE FROM pi_clearing_credit_notes
+                WHERE user_id = %s
+                  AND run_id::text = %s
+                """,
+                (user["id"], resolved_run_id),
+            )
+            cursor.execute(
+                """
+                DELETE FROM pi_clearing_run_rows
+                WHERE user_id = %s
+                  AND run_id::text = %s
+                """,
+                (user["id"], resolved_run_id),
+            )
             cursor.execute(
                 """
                 DELETE FROM pi_clearing_runs
@@ -13766,7 +13799,7 @@ def xero_lock_date_mismatch_pdf(rows: list[dict], generated_at: str) -> tuple[by
         buffer,
         pagesize=A4,
         title="Xero Lock-Date Mismatches",
-        author="Credit Control Console",
+        author="Jenius Tools",
         leftMargin=32,
         rightMargin=32,
         topMargin=32,
@@ -40126,8 +40159,20 @@ def _bank_statement_chunk_transactions(extraction: dict) -> list[dict]:
     return _merge_bank_statement_extractions([extraction]).get("transactions") or []
 
 
-async def _process_bank_statement_upload(user: dict, account: dict, upload_id: str, filename: str, content_type: str, file_bytes: bytes, is_retry: bool = False) -> dict:
+async def _process_bank_statement_upload(
+    user: dict,
+    account: dict,
+    upload_id: str,
+    filename: str,
+    content_type: str,
+    file_bytes: bytes,
+    import_mode: str = "missing-only",
+    is_retry: bool = False,
+) -> dict:
     bank_account_id = str(account["id"])
+    import_mode_value = str(import_mode or "missing-only").strip().lower() or "missing-only"
+    if import_mode_value != "missing-only":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only missing-only import mode is supported.")
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -40148,7 +40193,7 @@ async def _process_bank_statement_upload(user: dict, account: dict, upload_id: s
                 upload_id,
                 "retry_started" if is_retry else "extraction_started",
                 "Retry started." if is_retry else "Extraction started.",
-                {"filename": filename, "contentType": content_type, "fileSize": len(file_bytes)},
+                {"filename": filename, "contentType": content_type, "fileSize": len(file_bytes), "importMode": import_mode_value},
             )
         connection.commit()
 
@@ -40355,8 +40400,18 @@ async def _process_bank_statement_upload(user: dict, account: dict, upload_id: s
     return bank_statement_payload(user)
 
 
-def queue_bank_statement_upload(user: dict, bank_account_id: str, filename: str, content_type: str, file_bytes: bytes) -> tuple[dict, dict, str]:
+def queue_bank_statement_upload(
+    user: dict,
+    bank_account_id: str,
+    filename: str,
+    content_type: str,
+    file_bytes: bytes,
+    import_mode: str = "missing-only",
+) -> tuple[dict, dict, str]:
     tenant_id = _bank_statement_tenant_id(user)
+    import_mode_value = str(import_mode or "missing-only").strip().lower() or "missing-only"
+    if import_mode_value != "missing-only":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only missing-only import mode is supported.")
     if not filename.lower().endswith(".pdf") and "pdf" not in (content_type or "").lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a PDF bank statement.")
     if len(file_bytes) > 50 * 1024 * 1024:
@@ -40379,7 +40434,7 @@ def queue_bank_statement_upload(user: dict, bank_account_id: str, filename: str,
             initial_activity = [_bank_statement_upload_activity(
                 "received",
                 "PDF received and queued for extraction.",
-                {"filename": filename, "contentType": content_type, "fileSize": len(file_bytes)},
+                {"filename": filename, "contentType": content_type, "fileSize": len(file_bytes), "importMode": import_mode_value},
             )]
             cursor.execute(
                 """
@@ -40398,8 +40453,23 @@ def queue_bank_statement_upload(user: dict, bank_account_id: str, filename: str,
 
 
 async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
-    _, account, upload_id = queue_bank_statement_upload(user, bank_account_id, filename, content_type, file_bytes)
-    return await _process_bank_statement_upload(user, account, str(upload_id), filename, content_type, file_bytes)
+    _, account, upload_id = queue_bank_statement_upload(
+        user,
+        bank_account_id,
+        filename,
+        content_type,
+        file_bytes,
+        import_mode="missing-only",
+    )
+    return await _process_bank_statement_upload(
+        user,
+        account,
+        str(upload_id),
+        filename,
+        content_type,
+        file_bytes,
+        "missing-only",
+    )
 
 
 def queue_bank_statement_retry(user: dict, upload_id: str) -> tuple[dict, dict, str, str, str, bytes]:
@@ -40514,6 +40584,7 @@ async def retry_bank_statement_upload(user: dict, upload_id: str) -> dict:
         filename,
         content_type,
         file_bytes,
+        "missing-only",
         is_retry=True,
     )
 
@@ -51172,8 +51243,8 @@ def add_customer_note(customer_id: str, user: dict, body: str) -> None:
 
 
 def _format_xero_note(user: dict, body: str) -> str:
-    author = user.get("full_name") or user.get("email") or "Credit Control Console user"
-    return _with_jenius_signature(f"Credit Control Console note from {author}: {body.strip()}")
+    author = user.get("full_name") or user.get("email") or "Jenius Tools user"
+    return _with_jenius_signature(f"Jenius Tools note from {author}: {body.strip()}")
 
 
 async def sync_invoice_workflow_note_to_xero(invoice_id: str, user: dict, body: str, event_type: str = "xero.workflow_note") -> dict:
@@ -51323,7 +51394,7 @@ async def sync_customer_note_to_xero(customer_id: str, user: dict, body: str) ->
 
 
 async def sync_invoice_status_to_xero(invoice_id: str, user: dict, status_value: str, note: str = "") -> dict:
-    detail = f'Credit Control Console status updated to "{status_value}".'
+    detail = f'Jenius Tools status updated to "{status_value}".'
     if note:
         detail = f"{detail} Note: {note.strip()}"
     return await sync_invoice_workflow_note_to_xero(invoice_id, user, detail, "xero.status_note")
