@@ -165,6 +165,7 @@ from .services import (
     jays_stats_budget_workspace,
     jays_stats2_ai_categorise,
     jays_stats2_import_transactions,
+    jays_stats2_update_transaction,
     jays_stats2_update_transaction_category,
     jays_stats2_workspace,
     jays_stats_ignition_daily,
@@ -5248,6 +5249,16 @@ async def api_jays_stats2_set_category(
 ):
     payload = await request.json()
     return {"status": "ok", **await jays_stats2_update_transaction_category(user, transaction_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/jays-stats-2/transactions/{transaction_id}")
+async def api_jays_stats2_update_transaction_fields(
+    transaction_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", **await jays_stats2_update_transaction(user, transaction_id, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/jays-stats-2/categorise-ai")

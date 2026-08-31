@@ -40535,6 +40535,88 @@ async def jays_stats2_update_transaction_category(user: dict, transaction_id: st
     }
 
 
+async def jays_stats2_update_transaction(user: dict, transaction_id: str, payload: dict | None = None) -> dict:
+    _ensure_jays_stats2_tables()
+    tenant_id = _bank_statement_tenant_id(user)
+    user_id = str(user.get("id") or "")
+    body = payload if isinstance(payload, dict) else {}
+    tx_id = str(transaction_id or "").strip()
+    if not tx_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction id is required.")
+
+    date_value = str(body.get("date") or "").strip()
+    tx_date = _jays_stats_parse_date(date_value) if date_value else None
+    if date_value and tx_date is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Date must be in YYYY-MM-DD format.")
+    description = re.sub(r"\s+", " ", str(body.get("description") or "").strip())
+    if not description:
+        description = "Statement transaction"
+    description = description[:500]
+
+    amount = _money(body.get("amount"))
+    if amount == Decimal("0.00"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount cannot be zero.")
+
+    running_balance_input = body.get("runningBalance")
+    running_balance = None if running_balance_input in (None, "") else _money(running_balance_input)
+    source_kind = re.sub(r"\s+", " ", str(body.get("sourceKind") or "").strip())[:40] or "manual"
+    source_file_name = re.sub(r"\s+", " ", str(body.get("sourceFileName") or "").strip())[:260]
+    date_iso = tx_date.isoformat() if isinstance(tx_date, date) else ""
+    source_hash = _jays_stats2_signature(date_iso, description, amount, running_balance)
+
+    row = None
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE jays_stats2_transactions
+                    SET transaction_date = %s,
+                        description = %s,
+                        amount = %s,
+                        running_balance = %s,
+                        source_kind = %s,
+                        source_file_name = %s,
+                        source_hash = %s
+                    WHERE id = %s
+                      AND user_id = %s
+                      AND tenant_id = %s
+                    RETURNING id
+                    """,
+                    (
+                        tx_date,
+                        description,
+                        amount,
+                        running_balance,
+                        source_kind,
+                        source_file_name,
+                        source_hash,
+                        tx_id,
+                        user_id,
+                        tenant_id,
+                    ),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+    except Exception as exc:
+        message = str(exc).lower()
+        if "idx_jays_stats2_tx_dedupe" in message or "duplicate key value" in message:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This edit would duplicate an existing transaction (same date, description, amount, and running balance).",
+            ) from exc
+        raise
+
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found.")
+
+    workspace = await jays_stats2_workspace(user)
+    return {
+        "transactionId": tx_id,
+        "workspace": workspace,
+    }
+
+
 JAYS_STATS2_AI_CATEGORY_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
