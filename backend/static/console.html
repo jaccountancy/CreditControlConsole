@@ -37287,6 +37287,64 @@
                 color: #2a3f66;
                 font-size: 0.84rem;
             }
+            #jaysStats2Screen .jays-stats-shell {
+                display: grid;
+                gap: 16px;
+            }
+            #jaysStats2Screen .jays-stats-topbar {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                justify-content: space-between;
+                align-items: flex-start;
+            }
+            #jaysStats2Screen .jays-stats-summary-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+                gap: 10px;
+            }
+            #jaysStats2Screen .jays-stats-summary-grid article {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: var(--surface-soft);
+                padding: 10px 12px;
+                display: grid;
+                gap: 4px;
+            }
+            #jaysStats2Screen .jays-stats-summary-grid span {
+                color: var(--muted);
+                font-size: 0.78rem;
+            }
+            #jaysStats2Screen .jays-stats-summary-grid strong {
+                font-size: 1rem;
+            }
+            #jaysStats2Screen .jays-stats-meta-note {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.78rem;
+            }
+            #jaysStats2Screen .jays-stats-table-wrap {
+                overflow: auto;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: #fff;
+            }
+            #jaysStats2Screen .jays-stats-table {
+                width: 100%;
+                border-collapse: collapse;
+                min-width: 980px;
+            }
+            #jaysStats2Screen .jays-stats-table th,
+            #jaysStats2Screen .jays-stats-table td {
+                padding: 9px 10px;
+                border-bottom: 1px solid var(--line);
+                text-align: left;
+                font-size: 0.82rem;
+            }
+            #jaysStats2Screen .jays-stats-table th {
+                background: var(--surface-soft);
+                font-weight: 700;
+            }
                 </style>
             </head>
             <body>
@@ -37416,6 +37474,10 @@
                                 <a class="app-nav-button" href="#credit-control-jays-stats" data-app-nav="jays-stats">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M7 15v-5"></path><path d="M12 15V6"></path><path d="M17 15v-8"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Jays Stats</strong><span>Cash collection suite</span></span>
+                                </a>
+                                <a class="app-nav-button" href="#credit-control-jays-stats-2" data-app-nav="jays-stats-2">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M6 16h12"></path><path d="M8 12h8"></path><path d="M10 8h4"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Jays Stats 2</strong><span>Statement transaction loader</span></span>
                                 </a>
                             </div>
                         </div>
@@ -43470,6 +43532,10 @@
                         <input id="jaysStatsStatementFileInput" type="file" accept=".csv,text/csv,application/pdf,.pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden>
                         <section class="detail-panel" id="jaysStatsPanel"></section>
                     </section>
+                    <section class="late-charges-screen detail-card" id="jaysStats2Screen" hidden>
+                        <input id="jaysStats2StatementFileInput" type="file" accept=".csv,text/csv,application/pdf,.pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,.xlsm" multiple hidden>
+                        <section class="detail-panel" id="jaysStats2Panel"></section>
+                    </section>
 
                     <section class="late-charges-screen detail-card" id="bankStatementsScreen" hidden>
                         <section class="detail-panel bank-statement-workspace">
@@ -48956,6 +49022,7 @@
                 "bank-statements": "Bank Statement Extraction",
                 "supplier-reconciliation": "Supplier Reconciliation",
                 "jays-stats": "Jays Stats",
+                "jays-stats-2": "Jays Stats 2",
                 ignition: "Renewals",
                 "ignition-clients": "Ignition Client Register",
                 "me-report": "Monthly Flows",
@@ -49007,6 +49074,7 @@
                 "bank-statements": "Upload bank statements, extract transactions, and match statement activity back to clients.",
                 "supplier-reconciliation": "",
                 "jays-stats": "Track month-to-date cash collection, expected receipts, and rolling end-of-month estimates.",
+                "jays-stats-2": "Upload statements, append missing transactions, and monitor running balance continuity.",
                 ignition: "Review and run proposal renewals from synced Ignition data.",
                 "ignition-clients": "Search and review the synced Ignition client register, ownership, fees, and activity.",
                 "me-report": "Run monthly bookkeeping flows, complete checks, route review approvals, and send client-ready outputs.",
@@ -49057,6 +49125,17 @@
             let jaysStatsState = loadJaysStatsState();
             let jaysStatsLoading = false;
             let jaysStatsImporting = false;
+            let jaysStats2Loading = false;
+            let jaysStats2Importing = false;
+            let jaysStats2Categorising = false;
+            let jaysStats2Workspace = {
+                account: { name: "JUK Trading Account", sortCode: "20-59-43", accountNumber: "93960404" },
+                summary: { transactionCount: 0, earliestDate: "", latestDate: "", latestRunningBalance: null, creditsTotal: 0, debitsTotal: 0, uncategorisedCreditCount: 0 },
+                categoryStreams: [],
+                transactions: [],
+            };
+            let jaysStats2SelectedMonthKey = "";
+            let jaysStats2LastImportSummary = null;
             let jaysStatsPendingEntrySources = {};
             let jaysStatsActivePanel = "tracker";
             let jaysStatsSettingsOpen = false;
@@ -50100,6 +50179,10 @@
                         jaysStatsBudget: config.endpoints?.jaysStatsBudget || "/api/jays-stats/budget",
                         jaysStatsBudgetAiChat: config.endpoints?.jaysStatsBudgetAiChat || "/api/jays-stats/budget/ai-chat",
                         jaysStatsBudgetPublish: config.endpoints?.jaysStatsBudgetPublish || "/api/jays-stats/budget/publish",
+                        jaysStats2: config.endpoints?.jaysStats2 || "/api/jays-stats-2",
+                        jaysStats2Uploads: config.endpoints?.jaysStats2Uploads || "/api/jays-stats-2/uploads",
+                        jaysStats2SetCategory: config.endpoints?.jaysStats2SetCategory || "/api/jays-stats-2/transactions/:transactionId/category",
+                        jaysStats2CategoriseAi: config.endpoints?.jaysStats2CategoriseAi || "/api/jays-stats-2/categorise-ai",
                         bankStatements: config.endpoints?.bankStatements || "/api/bank-statements",
                         bankStatementClients: config.endpoints?.bankStatementClients || "/api/bank-statements/clients",
                         bankStatementClient: config.endpoints?.bankStatementClient || "/api/bank-statements/clients/:clientId",
@@ -54829,6 +54912,7 @@
                 if (activeView === "xero-lock-date") return "xero-lock-date";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "jays-stats") return "jays-stats";
+                if (activeView === "jays-stats-2") return "jays-stats-2";
                 if (activeView === "bank-statements") return "bank-statements";
                 if (activeView === "supplier-reconciliation") return "supplier-reconciliation";
                 if (activeView === "ignition" || activeView === "ignition-clients") return "ignition";
@@ -55058,6 +55142,7 @@
                 if (activeView === "identity-verification") return "credit";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "jays-stats") return "practice";
+                if (activeView === "jays-stats-2") return "practice";
                 if (activeView === "bank-statements") return "bank";
                 if (activeView === "supplier-reconciliation") return "bank";
                 if (isIgnitionView()) return "ignition";
@@ -55352,6 +55437,7 @@
                 setElementVisible(document.getElementById("xeroLockDateScreen"), activeView === "xero-lock-date");
                 setElementVisible(document.getElementById("jashflowScreen"), activeView === "jashflow");
                 setElementVisible(document.getElementById("jaysStatsScreen"), activeView === "jays-stats");
+                setElementVisible(document.getElementById("jaysStats2Screen"), activeView === "jays-stats-2");
                 setElementVisible(document.getElementById("bankStatementsScreen"), activeView === "bank-statements");
                 setElementVisible(document.getElementById("supplierReconciliationScreen"), activeView === "supplier-reconciliation");
                 setElementVisible(document.getElementById("supplierReconciliationStatementPageScreen"), activeView === "supplier-reconciliation-statement-page");
@@ -55386,7 +55472,7 @@
                 document.body.classList.toggle("is-submitted-employee-forms-view", activeView === "submitted-employee-forms");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
                 document.body.classList.toggle("is-task-bookkeeping-workflow-view", activeView === "task-bookkeeping-workflow");
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "jays-stats", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "pi-clearing-account", "pi-clearing-account-page", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "jays-stats", "jays-stats-2", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "pi-clearing-account", "pi-clearing-account-page", "settings", "insights", "notifications"].includes(activeView));
                 syncClientRegisterSidebarDocking();
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
@@ -66921,6 +67007,7 @@
                 if (section === "xero-lock-date") return openXeroLockDateScreen();
                 if (section === "jashflow") return openJashflowScreen();
                 if (section === "jays-stats") return openJaysStatsScreen();
+                if (section === "jays-stats-2") return openJaysStats2Screen();
                 if (section === "bank-statements") return openBankStatementsScreen();
                 if (section === "supplier-reconciliation") return openSupplierReconciliationScreen();
                 if (section === "ignition") return openIgnitionScreen();
@@ -67091,6 +67178,7 @@
                 "risk-assessments",
                 "pi-clearing-account-page",
                 "jays-stats",
+                "jays-stats-2",
             ]);
             const practiceAssuranceNavSections = new Set([
                 "identity-verification",
@@ -67239,6 +67327,7 @@
                 "pi-clearing-account": "credit-control-pi-clearing-account",
                 "pi-clearing-account-page": "credit-control-pi-clearing-account-page",
                 vault: "credit-control-vault",
+                "jays-stats-2": "credit-control-jays-stats-2",
                 settings: "credit-control-settings",
             };
 
@@ -68856,6 +68945,7 @@
                 const xeroLockDateScreen = document.getElementById("xeroLockDateScreen");
                 const jashflowScreen = document.getElementById("jashflowScreen");
                 const jaysStatsScreen = document.getElementById("jaysStatsScreen");
+                const jaysStats2Screen = document.getElementById("jaysStats2Screen");
                 const bankStatementsScreen = document.getElementById("bankStatementsScreen");
                 const supplierReconciliationScreen = document.getElementById("supplierReconciliationScreen");
                 const ignitionScreen = document.getElementById("ignitionScreen");
@@ -68879,6 +68969,7 @@
                 setElementVisible(xeroLockDateScreen, activeView === "xero-lock-date");
                 setElementVisible(jashflowScreen, activeView === "jashflow");
                 setElementVisible(jaysStatsScreen, activeView === "jays-stats");
+                setElementVisible(jaysStats2Screen, activeView === "jays-stats-2");
                 setElementVisible(bankStatementsScreen, activeView === "bank-statements");
                 setElementVisible(supplierReconciliationScreen, activeView === "supplier-reconciliation");
                 setElementVisible(ignitionScreen, activeView === "ignition");
@@ -87609,6 +87700,16 @@
                 scrollConsoleToTop();
             }
 
+            function openJaysStats2Screen() {
+                activeView = "jays-stats-2";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                loadJaysStats2({ silent: true });
+                scrollConsoleToTop();
+            }
+
             function jaysStatsEntryValue(entry, key) {
                 return jaysStatsNumber(entry?.[key]).toFixed(2);
             }
@@ -88610,6 +88711,465 @@
                         removeJaysStatsEntry(date);
                     });
                 });
+            }
+
+            async function loadJaysStats2(options = {}) {
+                if (jaysStats2Loading) return;
+                const silent = Boolean(options?.silent);
+                jaysStats2Loading = true;
+                renderJaysStats2Screen();
+                try {
+                    const payload = await requestJSON(api.endpoints.jaysStats2, { suppressFailurePanel: true, timeoutMs: 20000 });
+                    if (payload && typeof payload === "object") {
+                        jaysStats2Workspace = {
+                            account: payload.account || jaysStats2Workspace.account,
+                            summary: payload.summary || jaysStats2Workspace.summary,
+                            categoryStreams: Array.isArray(payload.categoryStreams) ? payload.categoryStreams : (jaysStats2Workspace.categoryStreams || []),
+                            transactions: Array.isArray(payload.transactions) ? payload.transactions : [],
+                        };
+                    }
+                } catch (error) {
+                    if (!silent) showToast(error?.message || "Unable to load Jays Stats 2.", "error");
+                } finally {
+                    jaysStats2Loading = false;
+                    renderJaysStats2Screen();
+                }
+            }
+
+            async function importJaysStats2Statements(fileList) {
+                const files = Array.from(fileList || []);
+                if (!files.length) return;
+                jaysStats2Importing = true;
+                renderJaysStats2Screen();
+                try {
+                    const formData = new FormData();
+                    files.forEach((file) => formData.append("files", file, file.name));
+                    const payload = await requestFormData(api.endpoints.jaysStats2Uploads, formData, {}, { timeoutMs: 240000 });
+                    if (payload?.workspace && typeof payload.workspace === "object") {
+                        jaysStats2Workspace = payload.workspace;
+                    } else {
+                        await loadJaysStats2({ silent: true });
+                    }
+                    jaysStats2LastImportSummary = {
+                        importedCount: Number(payload?.importedCount || 0),
+                        duplicateCount: Number(payload?.duplicateCount || 0),
+                        duplicateInFileCount: Number(payload?.duplicateInFileCount || 0),
+                        processedCount: Number(payload?.processedCount || 0),
+                        extractedCount: Number(payload?.extractedCount || 0),
+                        fileSummaries: Array.isArray(payload?.fileSummaries) ? payload.fileSummaries : [],
+                        importedSamples: Array.isArray(payload?.importedSamples) ? payload.importedSamples : [],
+                        duplicateSamples: Array.isArray(payload?.duplicateSamples) ? payload.duplicateSamples : [],
+                    };
+                    const importedCount = Number(payload?.importedCount || 0);
+                    const duplicateCount = Number(payload?.duplicateCount || 0) + Number(payload?.duplicateInFileCount || 0);
+                    showToast(`Imported ${importedCount.toLocaleString("en-GB")} new transaction(s). ${duplicateCount.toLocaleString("en-GB")} duplicate(s) skipped.`, "success");
+                } catch (error) {
+                    showToast(error?.message || "Statement upload failed.", "error");
+                } finally {
+                    jaysStats2Importing = false;
+                    renderJaysStats2Screen();
+                }
+            }
+
+            function jaysStats2StreamDefinitions() {
+                const streams = Array.isArray(jaysStats2Workspace?.categoryStreams) ? jaysStats2Workspace.categoryStreams : [];
+                if (streams.length) return streams;
+                return [
+                    { key: "unclassified", label: "Unclassified" },
+                    { key: "ignition-disbursals", label: "Ignition disbursals" },
+                    { key: "stripe-income", label: "Stripe income" },
+                    { key: "vending-income", label: "Vending machine income" },
+                    { key: "bank-transfers", label: "Bank transfers" },
+                    { key: "other-income", label: "Other income" },
+                    { key: "internal-transfer", label: "Internal transfer (exclude)" },
+                    { key: "ignore", label: "Ignore" }
+                ];
+            }
+
+            function jaysStats2CategoryLabelForKey(streamKey = "") {
+                const key = String(streamKey || "").trim().toLowerCase();
+                const match = jaysStats2StreamDefinitions().find((item) => String(item?.key || "").toLowerCase() === key);
+                return String(match?.label || "Unclassified");
+            }
+
+            function jaysStats2CategoryBadge(row = {}) {
+                const source = String(row?.categorySource || "unclassified").trim();
+                const confidence = Number(row?.categoryConfidence || 0);
+                const suffix = confidence > 0 ? ` · ${Math.round(confidence * 100)}%` : "";
+                if (source === "manual") return `Manual${suffix}`;
+                if (source === "learned-rule") return `Learned${suffix}`;
+                if (source === "ai") return `AI${suffix}`;
+                if (source === "heuristic") return `Rule${suffix}`;
+                return "Unclassified";
+            }
+
+            async function jaysStats2UpdateCategory(transactionId, streamKey) {
+                const cleanId = String(transactionId || "").trim();
+                if (!cleanId) return;
+                try {
+                    const payload = await requestJSON(endpointURL(api.endpoints.jaysStats2SetCategory, { transactionId: cleanId }), {
+                        method: "POST",
+                        body: JSON.stringify({ streamKey, learnRule: true }),
+                    });
+                    if (payload?.workspace && typeof payload.workspace === "object") {
+                        jaysStats2Workspace = payload.workspace;
+                    } else {
+                        await loadJaysStats2({ silent: true });
+                    }
+                    renderJaysStats2Screen();
+                } catch (error) {
+                    showToast(error?.message || "Unable to save category.", "error");
+                    renderJaysStats2Screen();
+                }
+            }
+
+            async function jaysStats2RunAiCategorisation() {
+                if (jaysStats2Categorising) return;
+                jaysStats2Categorising = true;
+                renderJaysStats2Screen();
+                try {
+                    const payload = await requestJSON(api.endpoints.jaysStats2CategoriseAi, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            monthKey: jaysStats2SelectedMonthKey || "",
+                            limit: 300,
+                        }),
+                    });
+                    if (payload?.workspace && typeof payload.workspace === "object") {
+                        jaysStats2Workspace = payload.workspace;
+                    } else {
+                        await loadJaysStats2({ silent: true });
+                    }
+                    const updated = Number(payload?.updatedCount || 0);
+                    const learned = Number(payload?.learnedRuleCount || 0);
+                    showToast(`AI categorised ${updated.toLocaleString("en-GB")} transaction(s) and learned ${learned.toLocaleString("en-GB")} rule(s).`, "success");
+                } catch (error) {
+                    showToast(error?.message || "AI categorisation failed.", "error");
+                } finally {
+                    jaysStats2Categorising = false;
+                    renderJaysStats2Screen();
+                }
+            }
+
+            function jaysStats2TransactionsByMonth(transactions = []) {
+                const map = new Map();
+                (Array.isArray(transactions) ? transactions : []).forEach((row) => {
+                    const date = String(row?.date || "").trim();
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+                    const monthKey = date.slice(0, 7);
+                    if (!map.has(monthKey)) map.set(monthKey, []);
+                    map.get(monthKey).push(row);
+                });
+                return new Map([...map.entries()].sort((left, right) => String(right[0]).localeCompare(String(left[0]))));
+            }
+
+            function jaysStats2MonthCreditSummary(transactions = []) {
+                const rows = Array.isArray(transactions) ? transactions : [];
+                const credits = rows.filter((row) => Number(row?.amount || 0) > 0);
+                const creditsTotal = credits.reduce((sum, row) => sum + Number(row?.amount || 0), 0);
+                const latestDate = rows.reduce((latest, row) => {
+                    const date = String(row?.date || "");
+                    return date > latest ? date : latest;
+                }, "");
+                const latestRunningBalance = rows
+                    .filter((row) => row?.runningBalance !== null && row?.runningBalance !== undefined)
+                    .sort((left, right) => String(right?.date || "").localeCompare(String(left?.date || "")))[0]?.runningBalance;
+                return {
+                    creditsTotal,
+                    creditCount: credits.length,
+                    latestDate,
+                    latestRunningBalance: latestRunningBalance === null || latestRunningBalance === undefined ? null : Number(latestRunningBalance),
+                };
+            }
+
+            function ensureJaysStatsMonth(monthKey = "") {
+                const cleanMonthKey = String(monthKey || "").trim();
+                if (!/^\d{4}-\d{2}$/.test(cleanMonthKey)) return null;
+                let month = (jaysStatsState.months || []).find((item) => item.monthKey === cleanMonthKey) || null;
+                if (!month) {
+                    month = jaysStatsCreateMonth(cleanMonthKey, "open");
+                    jaysStatsState.months.push(month);
+                    jaysStatsState.selectedMonthKey = cleanMonthKey;
+                    jaysStatsState = normaliseJaysStatsState(jaysStatsState);
+                }
+                return (jaysStatsState.months || []).find((item) => item.monthKey === cleanMonthKey) || month;
+            }
+
+            function pushJaysStats2MonthToJaysStats() {
+                const monthKey = String(jaysStats2SelectedMonthKey || "").trim();
+                if (!/^\d{4}-\d{2}$/.test(monthKey)) {
+                    showToast("Select a month to push.", "error");
+                    return;
+                }
+                const grouped = jaysStats2TransactionsByMonth(jaysStats2Workspace?.transactions || []);
+                const rows = grouped.get(monthKey) || [];
+                if (!rows.length) {
+                    showToast("No transactions found for that month.", "error");
+                    return;
+                }
+                const summary = jaysStats2MonthCreditSummary(rows);
+                if (summary.creditsTotal <= 0) {
+                    showToast("No credit transactions found for that month.", "info");
+                    return;
+                }
+                let ignitionTotal = 0;
+                let stripeTotal = 0;
+                let vendingTotal = 0;
+                let bankTotal = 0;
+                let otherTotal = 0;
+                let excludedInternal = 0;
+                rows.forEach((row) => {
+                    const amount = Number(row?.amount || 0);
+                    if (!(amount > 0)) return;
+                    const streamKey = String(row?.categoryStreamKey || "unclassified").trim().toLowerCase();
+                    if (streamKey === "internal-transfer" || streamKey === "ignore") {
+                        excludedInternal += amount;
+                        return;
+                    }
+                    if (streamKey === "ignition-disbursals") ignitionTotal += amount;
+                    else if (streamKey === "stripe-income") stripeTotal += amount;
+                    else if (streamKey === "vending-income") vendingTotal += amount;
+                    else if (streamKey === "bank-transfers") bankTotal += amount;
+                    else if (streamKey === "other-income") otherTotal += amount;
+                    else bankTotal += amount;
+                });
+                const targetMonth = ensureJaysStatsMonth(monthKey);
+                if (!targetMonth) {
+                    showToast("Unable to create or load the target month.", "error");
+                    return;
+                }
+                if (targetMonth.status === "closed") {
+                    showToast("That Jays Stats month is closed and cannot be edited.", "error");
+                    return;
+                }
+                const latestEntry = jaysStatsLatestEntry(targetMonth) || {};
+                const fallbackDate = `${monthKey}-01`;
+                const entryDate = /^\d{4}-\d{2}-\d{2}$/.test(summary.latestDate) ? summary.latestDate : fallbackDate;
+                const nextSources = jaysStatsNormaliseSources({
+                    ...(latestEntry.sources || {}),
+                    ignitionDisbursals: "bank-import",
+                    stripeIncome: "bank-import",
+                    vendingMachineIncome: "bank-import",
+                    bankTransfers: "bank-import",
+                    otherIncome: "bank-import",
+                });
+                const nextNotes = [
+                    String(latestEntry.notes || "").trim(),
+                    `Jays Stats 2 sync (${formatMonthKey(monthKey)}): Ignition ${formatCurrency(ignitionTotal)}, Stripe ${formatCurrency(stripeTotal)}, Vending ${formatCurrency(vendingTotal)}, Bank ${formatCurrency(bankTotal)}, Other ${formatCurrency(otherTotal)}${excludedInternal > 0 ? `, Excluded internal ${formatCurrency(excludedInternal)}` : ""}`
+                ].filter(Boolean).join(" | ");
+                const ok = updateJaysStatsEntry(monthKey, {
+                    ...latestEntry,
+                    date: entryDate,
+                    ignitionDisbursals: ignitionTotal,
+                    stripeIncome: stripeTotal,
+                    vendingMachineIncome: vendingTotal,
+                    bankTransfers: bankTotal,
+                    otherIncome: otherTotal,
+                    sources: nextSources,
+                    notes: nextNotes,
+                });
+                if (!ok) {
+                    showToast("Unable to update Jays Stats for that month.", "error");
+                    return;
+                }
+                jaysStatsState.selectedMonthKey = monthKey;
+                jaysStatsState = normaliseJaysStatsState(jaysStatsState);
+                persistJaysStatsState();
+                showToast(`Pushed ${formatCurrency(summary.creditsTotal)} (${summary.creditCount.toLocaleString("en-GB")} credits) to ${formatMonthKey(monthKey)}.`, "success");
+                renderJaysStats2Screen();
+            }
+
+            function renderJaysStats2Screen() {
+                const panel = document.getElementById("jaysStats2Panel");
+                if (!panel) return;
+                const account = jaysStats2Workspace?.account || {};
+                const summary = jaysStats2Workspace?.summary || {};
+                const transactions = Array.isArray(jaysStats2Workspace?.transactions) ? jaysStats2Workspace.transactions : [];
+                const groupedByMonth = jaysStats2TransactionsByMonth(transactions);
+                const monthKeys = [...groupedByMonth.keys()];
+                if (!monthKeys.includes(jaysStats2SelectedMonthKey)) {
+                    jaysStats2SelectedMonthKey = monthKeys[0] || "";
+                }
+                const selectedMonthRows = groupedByMonth.get(jaysStats2SelectedMonthKey) || [];
+                const selectedMonthSummary = jaysStats2MonthCreditSummary(selectedMonthRows);
+                const categoryStreams = jaysStats2StreamDefinitions();
+                const importSummary = jaysStats2LastImportSummary && typeof jaysStats2LastImportSummary === "object"
+                    ? jaysStats2LastImportSummary
+                    : null;
+                const importSummaryRows = (importSummary?.fileSummaries || []).map((row) => `
+                    <tr>
+                        <td>${escapeHTML(String(row?.fileName || ""))}</td>
+                        <td>${escapeHTML(Number(row?.extractedCount || 0).toLocaleString("en-GB"))}</td>
+                        <td>${escapeHTML(Number(row?.processedCount || 0).toLocaleString("en-GB"))}</td>
+                        <td>${escapeHTML(Number(row?.importedCount || 0).toLocaleString("en-GB"))}</td>
+                        <td>${escapeHTML(Number(row?.duplicateExistingCount || 0).toLocaleString("en-GB"))}</td>
+                        <td>${escapeHTML(Number(row?.duplicateInFileCount || 0).toLocaleString("en-GB"))}</td>
+                    </tr>
+                `).join("");
+                const importedSampleRows = (importSummary?.importedSamples || []).slice(0, 8).map((row) => `
+                    <li>${escapeHTML(formatDate(String(row?.date || "")))} • ${escapeHTML(String(row?.description || ""))} • ${escapeHTML(formatCurrency(Number(row?.amount || 0)))} • ${escapeHTML(String(row?.fileName || ""))}</li>
+                `).join("");
+                const duplicateSampleRows = (importSummary?.duplicateSamples || []).slice(0, 8).map((row) => `
+                    <li>${escapeHTML(formatDate(String(row?.date || "")))} • ${escapeHTML(String(row?.description || ""))} • ${escapeHTML(formatCurrency(Number(row?.amount || 0)))} • ${escapeHTML(String(row?.fileName || ""))}</li>
+                `).join("");
+                const rows = transactions.map((row) => `
+                    <tr>
+                        <td>${escapeHTML(formatDate(row?.date || ""))}</td>
+                        <td>${escapeHTML(String(row?.description || ""))}</td>
+                        <td>${escapeHTML(formatCurrency(row?.amount || 0))}</td>
+                        <td>${row?.runningBalance === null || row?.runningBalance === undefined ? "--" : escapeHTML(formatCurrency(row.runningBalance))}</td>
+                        <td>
+                            <label class="sr-only" for="jaysStats2Category-${escapeHTML(String(row?.id || ""))}">Category</label>
+                            <select id="jaysStats2Category-${escapeHTML(String(row?.id || ""))}" data-jays-stats2-category-id="${escapeHTML(String(row?.id || ""))}" ${jaysStats2Importing || jaysStats2Categorising ? "disabled" : ""}>
+                                ${categoryStreams.map((stream) => `<option value="${escapeHTML(String(stream?.key || ""))}" ${String(row?.categoryStreamKey || "") === String(stream?.key || "") ? "selected" : ""}>${escapeHTML(String(stream?.label || ""))}</option>`).join("")}
+                            </select>
+                            <small>${escapeHTML(jaysStats2CategoryBadge(row))}</small>
+                        </td>
+                        <td>${escapeHTML(String(row?.sourceKind || ""))}</td>
+                        <td>${escapeHTML(String(row?.sourceFileName || ""))}</td>
+                    </tr>
+                `).join("");
+                panel.innerHTML = `
+                    <section class="jays-stats-shell">
+                        <header class="jays-stats-topbar">
+                            <div>
+                                <p class="eyebrow">Statement transaction loader</p>
+                                <h3>Jays Stats 2</h3>
+                                <p class="detail-meta">${escapeHTML(String(account?.name || "JUK Trading Account"))} ${escapeHTML(String(account?.sortCode || "20-59-43"))} ${escapeHTML(String(account?.accountNumber || "93960404"))}</p>
+                            </div>
+                            <div class="detail-actions">
+                                <label for="jaysStats2MonthSelect">Month</label>
+                                <select id="jaysStats2MonthSelect">
+                                    ${monthKeys.map((monthKey) => `<option value="${escapeHTML(monthKey)}" ${monthKey === jaysStats2SelectedMonthKey ? "selected" : ""}>${escapeHTML(formatMonthKey(monthKey))}</option>`).join("")}
+                                </select>
+                                <button class="ghost-button" id="jaysStats2PushButton" type="button" ${!jaysStats2SelectedMonthKey ? "disabled" : ""}>Push to Jays Stats</button>
+                                <button class="ghost-button" id="jaysStats2AiCategoriseButton" type="button" ${jaysStats2Categorising ? "disabled" : ""}>${jaysStats2Categorising ? "Categorising..." : "Auto-categorise with Jenius AI"}</button>
+                                <button class="primary-button" id="jaysStats2UploadButton" type="button" ${jaysStats2Importing ? "disabled" : ""}>Upload statement files</button>
+                                <button class="ghost-button" id="jaysStats2RefreshButton" type="button" ${jaysStats2Loading ? "disabled" : ""}>Refresh</button>
+                            </div>
+                        </header>
+                        <section class="jays-stats-summary-grid">
+                            <article>
+                                <span>Total transactions</span>
+                                <strong>${escapeHTML(Number(summary.transactionCount || 0).toLocaleString("en-GB"))}</strong>
+                            </article>
+                            <article>
+                                <span>Total credits</span>
+                                <strong>${escapeHTML(formatCurrency(summary.creditsTotal || 0))}</strong>
+                            </article>
+                            <article>
+                                <span>Total debits</span>
+                                <strong>${escapeHTML(formatCurrency(summary.debitsTotal || 0))}</strong>
+                            </article>
+                            <article>
+                                <span>Latest running balance</span>
+                                <strong>${summary.latestRunningBalance === null || summary.latestRunningBalance === undefined ? "--" : escapeHTML(formatCurrency(summary.latestRunningBalance))}</strong>
+                            </article>
+                            <article>
+                                <span>Uncategorised credits</span>
+                                <strong>${escapeHTML(Number(summary.uncategorisedCreditCount || 0).toLocaleString("en-GB"))}</strong>
+                            </article>
+                        </section>
+                        <section class="jays-stats-summary-grid">
+                            <article>
+                                <span>Selected month credits</span>
+                                <strong>${escapeHTML(formatCurrency(selectedMonthSummary.creditsTotal || 0))}</strong>
+                            </article>
+                            <article>
+                                <span>Selected month credit count</span>
+                                <strong>${escapeHTML(Number(selectedMonthSummary.creditCount || 0).toLocaleString("en-GB"))}</strong>
+                            </article>
+                            <article>
+                                <span>Selected month latest date</span>
+                                <strong>${escapeHTML(formatDate(selectedMonthSummary.latestDate || ""))}</strong>
+                            </article>
+                            <article>
+                                <span>Selected month running balance</span>
+                                <strong>${selectedMonthSummary.latestRunningBalance === null || selectedMonthSummary.latestRunningBalance === undefined ? "--" : escapeHTML(formatCurrency(selectedMonthSummary.latestRunningBalance))}</strong>
+                            </article>
+                        </section>
+                        ${importSummary ? `
+                        <section class="jays-stats-settings-panel">
+                            <p class="eyebrow">Latest upload summary</p>
+                            <p class="jays-stats-meta-note">
+                                Extracted ${escapeHTML(Number(importSummary.extractedCount || 0).toLocaleString("en-GB"))},
+                                processed ${escapeHTML(Number(importSummary.processedCount || 0).toLocaleString("en-GB"))},
+                                added ${escapeHTML(Number(importSummary.importedCount || 0).toLocaleString("en-GB"))},
+                                skipped ${escapeHTML((Number(importSummary.duplicateCount || 0) + Number(importSummary.duplicateInFileCount || 0)).toLocaleString("en-GB"))} duplicate(s).
+                            </p>
+                            <section class="jays-stats-table-wrap">
+                                <table class="jays-stats-table">
+                                    <thead>
+                                        <tr>
+                                            <th>File</th>
+                                            <th>Extracted</th>
+                                            <th>Processed</th>
+                                            <th>Added</th>
+                                            <th>Skipped (already on file)</th>
+                                            <th>Skipped (duplicate in upload)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>${importSummaryRows || '<tr><td colspan="6">No file-level details available.</td></tr>'}</tbody>
+                                </table>
+                            </section>
+                            <div class="jays-stats-summary-grid">
+                                <article>
+                                    <span>Added examples</span>
+                                    <strong>${escapeHTML(Number((importSummary.importedSamples || []).length).toLocaleString("en-GB"))}</strong>
+                                    <ul class="jays-stats-ai-list">${importedSampleRows || "<li>No sample rows.</li>"}</ul>
+                                </article>
+                                <article>
+                                    <span>Skipped duplicate examples</span>
+                                    <strong>${escapeHTML(Number((importSummary.duplicateSamples || []).length).toLocaleString("en-GB"))}</strong>
+                                    <ul class="jays-stats-ai-list">${duplicateSampleRows || "<li>No sample rows.</li>"}</ul>
+                                </article>
+                            </div>
+                        </section>
+                        ` : ""}
+                        <p class="jays-stats-meta-note">Date range: ${escapeHTML(formatDate(summary.earliestDate || ""))} to ${escapeHTML(formatDate(summary.latestDate || ""))}. Upload PDF, CSV, or .xlsx statements and only missing transactions will be added.</p>
+                        <section class="jays-stats-table-wrap">
+                            <table class="jays-stats-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Description</th>
+                                        <th>Amount</th>
+                                        <th>Running Balance</th>
+                                        <th>Category</th>
+                                        <th>Source</th>
+                                        <th>File</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rows || '<tr><td colspan="7">No transactions yet. Upload a statement to begin.</td></tr>'}</tbody>
+                            </table>
+                        </section>
+                    </section>
+                `;
+                document.getElementById("jaysStats2UploadButton")?.addEventListener("click", () => {
+                    document.getElementById("jaysStats2StatementFileInput")?.click();
+                });
+                document.getElementById("jaysStats2RefreshButton")?.addEventListener("click", () => loadJaysStats2());
+                document.getElementById("jaysStats2PushButton")?.addEventListener("click", () => pushJaysStats2MonthToJaysStats());
+                document.getElementById("jaysStats2AiCategoriseButton")?.addEventListener("click", () => jaysStats2RunAiCategorisation());
+                document.getElementById("jaysStats2MonthSelect")?.addEventListener("change", (event) => {
+                    jaysStats2SelectedMonthKey = String(event?.target?.value || "");
+                    renderJaysStats2Screen();
+                });
+                panel.querySelectorAll("[data-jays-stats2-category-id]").forEach((element) => {
+                    element.addEventListener("change", (event) => {
+                        const txId = String(event?.target?.dataset?.jaysStats2CategoryId || "");
+                        const streamKey = String(event?.target?.value || "unclassified");
+                        jaysStats2UpdateCategory(txId, streamKey);
+                    });
+                });
+                const statementInput = document.getElementById("jaysStats2StatementFileInput");
+                if (statementInput && statementInput.dataset.wired !== "true") {
+                    statementInput.dataset.wired = "true";
+                    statementInput.addEventListener("change", (event) => {
+                        importJaysStats2Statements(event?.target?.files);
+                        event.target.value = "";
+                    });
+                }
             }
 
             async function loadMeReport(force = false) {
@@ -115053,6 +115613,7 @@
                     "xero-lock-date": new Set(["renderXeroLockDateScreen"]),
                     jashflow: new Set(["renderJashflowScreen"]),
                     "jays-stats": new Set(["renderJaysStatsScreen"]),
+                    "jays-stats-2": new Set(["renderJaysStats2Screen"]),
                     "bank-statements": new Set(["renderBankStatementsScreen", "renderBankAccountPanel", "renderBankStatementUploadPanel", "renderBankSa100EntryPanel"]),
                     "supplier-reconciliation": new Set(["renderSupplierReconciliationScreen", "renderSupplierReconciliationStatementPage"]),
                     "supplier-reconciliation-statement-page": new Set(["renderSupplierReconciliationScreen", "renderSupplierReconciliationStatementPage"]),
@@ -115125,6 +115686,7 @@
                     ["renderXeroLockDateScreen", () => renderXeroLockDateScreen()],
                     ["renderJashflowScreen", () => renderJashflowScreen()],
                     ["renderJaysStatsScreen", () => renderJaysStatsScreen()],
+                    ["renderJaysStats2Screen", () => renderJaysStats2Screen()],
                     ["renderBankStatementsScreen", () => renderBankStatementsScreen()],
                     ["renderSupplierReconciliationScreen", () => renderSupplierReconciliationScreen()],
                     ["renderSupplierReconciliationStatementPage", () => renderSupplierReconciliationStatementPage()],
@@ -144067,6 +144629,9 @@
                 }
                 if (activeView === "jays-stats") {
                     loadJaysStats({ silent: true });
+                }
+                if (activeView === "jays-stats-2") {
+                    loadJaysStats2({ silent: true });
                 }
                 if (activeView === "supplier-reconciliation") {
                     loadSupplierReconciliation();

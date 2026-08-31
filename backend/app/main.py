@@ -163,6 +163,10 @@ from .services import (
     jays_stats_budget_ai_chat,
     jays_stats_budget_publish,
     jays_stats_budget_workspace,
+    jays_stats2_ai_categorise,
+    jays_stats2_import_transactions,
+    jays_stats2_update_transaction_category,
+    jays_stats2_workspace,
     jays_stats_ignition_daily,
     post_jashflow_interest_invoice,
     save_jashflow_settings,
@@ -5212,6 +5216,44 @@ async def api_jays_stats_budget_ai_chat(request: Request, user: dict = Depends(r
 async def api_jays_stats_budget_publish(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", **await jays_stats_budget_publish(user, payload)}
+
+
+@app.get("/api/jays-stats-2")
+async def api_jays_stats2(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **await jays_stats2_workspace(user)}
+
+
+@app.post("/api/jays-stats-2/uploads")
+async def api_jays_stats2_uploads(
+    files: list[UploadFile] = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload at least one statement file.")
+    items = []
+    for upload in files:
+        items.append({
+            "filename": upload.filename or "statement",
+            "content_type": upload.content_type or "",
+            "bytes": await upload.read(),
+        })
+    return {"status": "ok", **await jays_stats2_import_transactions(user, items)}
+
+
+@app.post("/api/jays-stats-2/transactions/{transaction_id}/category")
+async def api_jays_stats2_set_category(
+    transaction_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", **await jays_stats2_update_transaction_category(user, transaction_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/jays-stats-2/categorise-ai")
+async def api_jays_stats2_categorise_ai(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **await jays_stats2_ai_categorise(user, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/payroll-headcount/workspaces")

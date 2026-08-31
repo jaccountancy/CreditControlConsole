@@ -39379,9 +39379,27 @@ def _jays_stats_signature(date_iso: str, description: str, amount: Decimal) -> t
 
 
 def _jays_stats_parse_date(value) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, (int, float, Decimal)):
+        serial = int(value)
+        if 1 <= serial <= 90000:
+            try:
+                return (datetime(1899, 12, 30) + timedelta(days=serial)).date()
+            except Exception:
+                return None
     raw = str(value or "").strip()
     if not raw:
         return None
+    if re.fullmatch(r"\d+(?:\.\d+)?", raw):
+        try:
+            serial = int(float(raw))
+            if 1 <= serial <= 90000:
+                return (datetime(1899, 12, 30) + timedelta(days=serial)).date()
+        except Exception:
+            pass
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y", "%d %b %Y", "%d %B %Y"):
         try:
             return datetime.strptime(raw, fmt).date()
@@ -39568,6 +39586,1131 @@ async def jays_stats_bank_credits_import(user: dict, month_key: str, file_items:
         "ignoredInternalTransfers": ignored_internal,
         "bankTransfers": float(_money(total)),
     }
+
+
+JAYS_STATS2_ACCOUNT_NAME = "JUK Trading Account"
+JAYS_STATS2_SORT_CODE = "20-59-43"
+JAYS_STATS2_ACCOUNT_NUMBER = "93960404"
+JAYS_STATS2_STREAMS = [
+    {"key": "unclassified", "label": "Unclassified"},
+    {"key": "ignition-disbursals", "label": "Ignition disbursals"},
+    {"key": "stripe-income", "label": "Stripe income"},
+    {"key": "vending-income", "label": "Vending machine income"},
+    {"key": "bank-transfers", "label": "Bank transfers"},
+    {"key": "other-income", "label": "Other income"},
+    {"key": "internal-transfer", "label": "Internal transfer (exclude)"},
+    {"key": "ignore", "label": "Ignore"},
+]
+JAYS_STATS2_STREAM_LABEL_BY_KEY = {str(item["key"]): str(item["label"]) for item in JAYS_STATS2_STREAMS}
+JAYS_STATS2_STREAM_KEY_BY_LABEL = {
+    re.sub(r"[^a-z0-9]+", "", str(item["label"]).strip().lower()): str(item["key"])
+    for item in JAYS_STATS2_STREAMS
+}
+
+
+def _jays_stats2_stream_label(stream_key: str) -> str:
+    key = str(stream_key or "").strip().lower()
+    return JAYS_STATS2_STREAM_LABEL_BY_KEY.get(key) or "Unclassified"
+
+
+def _jays_stats2_normalise_stream_key(stream_key: object, stream_label: object = "") -> str:
+    key = str(stream_key or "").strip().lower()
+    if key in JAYS_STATS2_STREAM_LABEL_BY_KEY:
+        return key
+    label_key = re.sub(r"[^a-z0-9]+", "", str(stream_label or "").strip().lower())
+    if label_key in JAYS_STATS2_STREAM_KEY_BY_LABEL:
+        return JAYS_STATS2_STREAM_KEY_BY_LABEL[label_key]
+    return "unclassified"
+
+
+def _jays_stats2_description_match_key(description: object) -> str:
+    text = re.sub(r"\s+", " ", str(description or "").strip().lower())
+    text = re.sub(r"\b(on|ref|reference|payment|transaction|funds|transfer|counter|credit|debit|bill|direct|standing|order|visa|mastercard|card)\b", " ", text)
+    text = re.sub(r"[^a-z0-9 ]+", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return ""
+    words = [word for word in text.split(" ") if word and not word.isdigit()]
+    if not words:
+        return ""
+    return " ".join(words[:6]).strip()[:120]
+
+
+def _jays_stats2_heuristic_stream_key(description: object, amount: Decimal) -> tuple[str, float]:
+    text = str(description or "").strip().lower()
+    if amount <= Decimal("0.00"):
+        return "ignore", 0.92
+    if re.search(r"\b(ignitionpay|practice ignition)\b", text):
+        return "ignition-disbursals", 0.94
+    if re.search(r"\b(stripe|visa direct payment stripe)\b", text):
+        return "stripe-income", 0.93
+    if re.search(r"\b(vending|sevenoaks vending)\b", text):
+        return "vending-income", 0.92
+    if re.search(r"\b(internal transfer|between accounts|own account|mobile-channel ft|journal transfer|sweep)\b", text):
+        return "internal-transfer", 0.90
+    if re.search(r"\b(rapyd|counter credit|bgc|credit payment)\b", text):
+        return "bank-transfers", 0.66
+    return "unclassified", 0.0
+
+
+def _jays_stats2_load_category_rules(user_id: str, tenant_id: str) -> dict[str, dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT match_key,
+                       stream_key,
+                       stream_label
+                FROM jays_stats2_category_rules
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                """,
+                (user_id, tenant_id),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    output: dict[str, dict] = {}
+    for row in rows:
+        match_key = str(row.get("match_key") or "").strip()
+        stream_key = _jays_stats2_normalise_stream_key(row.get("stream_key"), row.get("stream_label"))
+        if not match_key:
+            continue
+        output[match_key] = {
+            "stream_key": stream_key,
+            "stream_label": _jays_stats2_stream_label(stream_key),
+        }
+    return output
+
+
+def _jays_stats2_apply_category_rules(row: dict, category_rules: dict[str, dict]) -> dict:
+    payload = dict(row or {})
+    description = payload.get("description")
+    amount = _money(payload.get("amount"))
+    match_key = _jays_stats2_description_match_key(description)
+    if match_key and match_key in category_rules:
+        rule = category_rules[match_key]
+        stream_key = _jays_stats2_normalise_stream_key(rule.get("stream_key"), rule.get("stream_label"))
+        payload["categoryStreamKey"] = stream_key
+        payload["categoryStreamLabel"] = _jays_stats2_stream_label(stream_key)
+        payload["categoryConfidence"] = Decimal("0.97")
+        payload["categorySource"] = "learned-rule"
+        return payload
+    heuristic_key, heuristic_confidence = _jays_stats2_heuristic_stream_key(description, amount)
+    if heuristic_key != "unclassified":
+        payload["categoryStreamKey"] = heuristic_key
+        payload["categoryStreamLabel"] = _jays_stats2_stream_label(heuristic_key)
+        payload["categoryConfidence"] = _money(Decimal(str(heuristic_confidence)))
+        payload["categorySource"] = "heuristic"
+    else:
+        payload["categoryStreamKey"] = "unclassified"
+        payload["categoryStreamLabel"] = "Unclassified"
+        payload["categoryConfidence"] = None
+        payload["categorySource"] = "unclassified"
+    return payload
+
+
+def _ensure_jays_stats2_tables() -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS jays_stats2_transactions (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    transaction_date DATE NULL,
+                    description TEXT NOT NULL,
+                    amount NUMERIC(18, 2) NOT NULL,
+                    running_balance NUMERIC(18, 2) NULL,
+                    source_kind TEXT NOT NULL DEFAULT 'manual',
+                    source_file_name TEXT NOT NULL DEFAULT '',
+                    category_stream_key TEXT NOT NULL DEFAULT 'unclassified',
+                    category_stream_label TEXT NOT NULL DEFAULT 'Unclassified',
+                    category_confidence NUMERIC(6, 4) NULL,
+                    category_source TEXT NOT NULL DEFAULT 'unclassified',
+                    category_updated_at TIMESTAMPTZ NULL,
+                    source_hash TEXT NOT NULL,
+                    raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_jays_stats2_tx_dedupe
+                ON jays_stats2_transactions (user_id, tenant_id, source_hash)
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_jays_stats2_tx_user_tenant_date
+                ON jays_stats2_transactions (user_id, tenant_id, transaction_date DESC, created_at DESC)
+                """
+            )
+            cursor.execute(
+                """
+                ALTER TABLE jays_stats2_transactions
+                ADD COLUMN IF NOT EXISTS category_stream_key TEXT NOT NULL DEFAULT 'unclassified'
+                """
+            )
+            cursor.execute(
+                """
+                ALTER TABLE jays_stats2_transactions
+                ADD COLUMN IF NOT EXISTS category_stream_label TEXT NOT NULL DEFAULT 'Unclassified'
+                """
+            )
+            cursor.execute(
+                """
+                ALTER TABLE jays_stats2_transactions
+                ADD COLUMN IF NOT EXISTS category_confidence NUMERIC(6, 4) NULL
+                """
+            )
+            cursor.execute(
+                """
+                ALTER TABLE jays_stats2_transactions
+                ADD COLUMN IF NOT EXISTS category_source TEXT NOT NULL DEFAULT 'unclassified'
+                """
+            )
+            cursor.execute(
+                """
+                ALTER TABLE jays_stats2_transactions
+                ADD COLUMN IF NOT EXISTS category_updated_at TIMESTAMPTZ NULL
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS jays_stats2_category_rules (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    match_key TEXT NOT NULL,
+                    stream_key TEXT NOT NULL,
+                    stream_label TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'manual',
+                    hit_count INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_jays_stats2_category_rule_unique
+                ON jays_stats2_category_rules (user_id, tenant_id, match_key)
+                """
+            )
+        connection.commit()
+
+
+def _jays_stats2_signature(date_iso: str, description: str, amount: Decimal, running_balance: Decimal | None = None) -> str:
+    balance_text = "" if running_balance is None else f"{_money(running_balance):.2f}"
+    signature = "|".join([
+        str(date_iso or "").strip(),
+        re.sub(r"\s+", " ", str(description or "").strip().lower()),
+        f"{_money(amount):.2f}",
+        balance_text,
+    ])
+    return hashlib.sha256(signature.encode("utf-8")).hexdigest()
+
+
+def _jays_stats_parse_currency(value) -> Decimal:
+    text = str(value or "").strip()
+    if not text:
+        return Decimal("0.00")
+    cleaned = (
+        text.replace("\u00a0", "")
+        .replace(",", "")
+        .replace("£", "")
+        .replace("$", "")
+        .replace("€", "")
+        .strip()
+    )
+    if not cleaned:
+        return Decimal("0.00")
+    sign = Decimal("-1") if cleaned.startswith("(") and cleaned.endswith(")") else Decimal("1")
+    cleaned = cleaned.strip("()")
+    if cleaned.endswith("-"):
+        cleaned = f"-{cleaned[:-1]}"
+    if cleaned.startswith("+"):
+        cleaned = cleaned[1:]
+    try:
+        return _money(Decimal(cleaned) * sign)
+    except Exception:
+        return Decimal("0.00")
+
+
+def _jays_stats_parse_csv_transactions(file_bytes: bytes) -> list[dict]:
+    text = ""
+    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            text = file_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if not text:
+        return []
+    reader = csv.DictReader(io.StringIO(text))
+    headers = [str(field or "").strip() for field in (reader.fieldnames or [])]
+    if not headers:
+        return []
+    by_norm = {re.sub(r"[^a-z0-9]+", "", header.lower()): header for header in headers}
+
+    def key(*candidates: str) -> str:
+        for candidate in candidates:
+            match = by_norm.get(candidate)
+            if match:
+                return match
+        return ""
+
+    date_key = key("date", "transactiondate", "valuedate", "posteddate")
+    desc_key = key("description", "details", "narrative", "payee", "reference", "memo", "transaction")
+    amount_key = key("amount", "transactionamount", "value")
+    credit_key = key("credit", "deposit", "paidin", "moneyin")
+    debit_key = key("debit", "withdrawal", "paidout", "moneyout")
+    balance_key = key("balance", "runningbalance", "accountbalance", "closingbalance")
+
+    rows: list[dict] = []
+    for row in reader:
+        if not isinstance(row, dict):
+            continue
+        tx_date = _jays_stats_parse_date(row.get(date_key) if date_key else "")
+        description = str(row.get(desc_key) if desc_key else "").strip() or "Statement transaction"
+        amount = Decimal("0.00")
+        if amount_key:
+            amount = _jays_stats_parse_currency(row.get(amount_key))
+        if amount == Decimal("0.00") and (credit_key or debit_key):
+            credit = _jays_stats_parse_currency(row.get(credit_key) if credit_key else "")
+            debit = _jays_stats_parse_currency(row.get(debit_key) if debit_key else "")
+            if credit != Decimal("0.00") or debit != Decimal("0.00"):
+                amount = credit - abs(debit)
+        if amount == Decimal("0.00"):
+            continue
+        balance = _jays_stats_parse_currency(row.get(balance_key) if balance_key else "")
+        rows.append({
+            "date": tx_date.isoformat() if tx_date else "",
+            "description": description,
+            "amount": float(_money(amount)),
+            "runningBalance": float(_money(balance)) if balance != Decimal("0.00") else None,
+            "source": "csv",
+        })
+    return rows
+
+
+def _jays_stats_xlsx_rows(file_bytes: bytes, max_rows: int = 8000) -> list[list[str]]:
+    rows: list[list[str]] = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as workbook:
+            sheets = _xlsx_sheet_targets(workbook)
+            if not sheets:
+                return []
+            shared_strings = _xlsx_shared_strings(workbook)
+            namespace = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+            _sheet_name, target = sheets[0]
+            sheet_root = ET.fromstring(workbook.read(target))
+            for row in sheet_root.findall("x:sheetData/x:row", namespace):
+                values_by_column: dict[int, str] = {}
+                for cell in row.findall("x:c", namespace):
+                    col_index = _xlsx_column_index(cell.attrib.get("r", ""))
+                    cell_text = _xlsx_cell_text(cell, shared_strings, namespace)
+                    if cell_text:
+                        values_by_column[col_index] = cell_text
+                if not values_by_column:
+                    continue
+                max_col = max(values_by_column.keys())
+                values = [str(values_by_column.get(index, "") or "").strip() for index in range(max_col + 1)]
+                rows.append(values)
+                if len(rows) >= max_rows:
+                    break
+    except Exception:
+        return []
+    return rows
+
+
+def _jays_stats_parse_xlsx_transactions(file_bytes: bytes) -> list[dict]:
+    rows = _jays_stats_xlsx_rows(file_bytes)
+    if not rows:
+        return []
+    header_index = -1
+    header_norm: dict[str, int] = {}
+    for index, row in enumerate(rows[:30]):
+        norms = {re.sub(r"[^a-z0-9]+", "", value.lower()): col for col, value in enumerate(row) if str(value or "").strip()}
+        if "date" in norms and ("amount" in norms or "moneyin" in norms or "moneyout" in norms or "credit" in norms or "debit" in norms):
+            header_index = index
+            header_norm = norms
+            break
+    if header_index < 0:
+        return []
+
+    def col(*names: str) -> int:
+        for name in names:
+            if name in header_norm:
+                return int(header_norm[name])
+        return -1
+
+    date_col = col("date", "transactiondate", "valuedate", "posteddate")
+    desc_col = col("description", "details", "narrative", "payee", "reference", "memo", "transaction")
+    amount_col = col("amount", "transactionamount", "value")
+    credit_col = col("credit", "deposit", "paidin", "moneyin")
+    debit_col = col("debit", "withdrawal", "paidout", "moneyout")
+    balance_col = col("balance", "runningbalance", "accountbalance", "closingbalance")
+
+    output: list[dict] = []
+    for row in rows[header_index + 1:]:
+        if not row:
+            continue
+        date_value = row[date_col] if 0 <= date_col < len(row) else ""
+        tx_date = _jays_stats_parse_date(date_value)
+        description = str(row[desc_col] if 0 <= desc_col < len(row) else "").strip() or "Statement transaction"
+        amount = Decimal("0.00")
+        if 0 <= amount_col < len(row):
+            amount = _jays_stats_parse_currency(row[amount_col])
+        if amount == Decimal("0.00") and (credit_col >= 0 or debit_col >= 0):
+            credit = _jays_stats_parse_currency(row[credit_col] if 0 <= credit_col < len(row) else "")
+            debit = _jays_stats_parse_currency(row[debit_col] if 0 <= debit_col < len(row) else "")
+            if credit != Decimal("0.00") or debit != Decimal("0.00"):
+                amount = credit - abs(debit)
+        if amount == Decimal("0.00"):
+            continue
+        balance = _jays_stats_parse_currency(row[balance_col] if 0 <= balance_col < len(row) else "")
+        output.append({
+            "date": tx_date.isoformat() if tx_date else "",
+            "description": description,
+            "amount": float(_money(amount)),
+            "runningBalance": float(_money(balance)) if balance != Decimal("0.00") else None,
+            "source": "spreadsheet",
+        })
+    return output
+
+
+def _jays_stats_parse_pdf_transactions_local(file_bytes: bytes) -> list[dict]:
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(file_bytes))
+        if getattr(reader, "is_encrypted", False):
+            try:
+                reader.decrypt("")
+            except Exception:
+                return []
+    except Exception:
+        return []
+
+    lines: list[str] = []
+    for page in reader.pages:
+        text = page.extract_text() or ""
+        for raw_line in text.splitlines():
+            compact = re.sub(r"\s+", " ", str(raw_line or "").strip())
+            if compact:
+                lines.append(compact)
+
+    date_line_re = re.compile(r"^(?P<date>\d{2}/\d{2}(?:/\d{4})?)\b")
+    date_part_re = re.compile(r"^\d{2}/\d{2}$")
+    year_part_re = re.compile(r"^/\d{4}$")
+    money_re = re.compile(r"[+-]?\s*£\s*\d[\d,]*\.\d{2}")
+    blocked_prefixes = (
+        "Page ",
+        "Showing transactions",
+        "Pending debit card transactions",
+        "Date Description Money in Money out Balance",
+        "Date Transaction Amount",
+        "Card Number",
+        "Transactions",
+    )
+    rows: list[dict] = []
+    current_date = ""
+    current_desc: list[str] = []
+
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.startswith(blocked_prefixes):
+            index += 1
+            continue
+        if date_part_re.match(line) and (index + 1) < len(lines) and year_part_re.match(lines[index + 1]):
+            line = f"{line}{lines[index + 1]}"
+            index += 1
+        date_match = date_line_re.match(line)
+        if date_match:
+            raw_date = date_match.group("date")
+            if len(raw_date) == 5:
+                raw_date = f"{raw_date}/{datetime.now().year}"
+            parsed = _jays_stats_parse_date(raw_date)
+            current_date = parsed.isoformat() if parsed else ""
+            remainder = line[date_match.end():].strip()
+            current_desc = [remainder] if remainder else []
+            if remainder and money_re.search(remainder):
+                # Keep this row; amount parsing below handles same-line rows.
+                pass
+            else:
+                index += 1
+                continue
+        if not current_date:
+            index += 1
+            continue
+
+        money_tokens = money_re.findall(line)
+        if not money_tokens:
+            current_desc.append(line)
+            index += 1
+            continue
+        cleaned_line = line
+        for token in money_tokens:
+            cleaned_line = cleaned_line.replace(token, " ")
+        cleaned_line = re.sub(r"\s+", " ", cleaned_line).strip(" -")
+        if cleaned_line and cleaned_line != current_date:
+            current_desc.append(cleaned_line)
+        description = re.sub(r"\s+", " ", " ".join(part for part in current_desc if part)).strip()
+        description = description or "Statement transaction"
+        amount = _jays_stats_parse_currency(money_tokens[0])
+        if amount == Decimal("0.00"):
+            current_desc = []
+            continue
+        running_balance = _jays_stats_parse_currency(money_tokens[-1]) if len(money_tokens) >= 2 else Decimal("0.00")
+        rows.append({
+            "date": current_date,
+            "description": description,
+            "amount": float(_money(amount)),
+            "runningBalance": float(_money(running_balance)) if len(money_tokens) >= 2 else None,
+            "source": "pdf-local",
+        })
+        current_desc = []
+        index += 1
+    return rows
+
+
+def _jays_stats2_normalise_transaction(row: dict, source_kind: str, source_file_name: str) -> dict | None:
+    if not isinstance(row, dict):
+        return None
+    tx_date = _jays_stats_parse_date(row.get("date"))
+    description = re.sub(r"\s+", " ", str(row.get("description") or "").strip())
+    if not description:
+        description = "Statement transaction"
+    amount = _money(row.get("amount"))
+    if amount == Decimal("0.00"):
+        return None
+    running_balance_raw = row.get("runningBalance")
+    if running_balance_raw is None and row.get("balance") is not None:
+        running_balance_raw = row.get("balance")
+    running_balance = _money(running_balance_raw) if running_balance_raw is not None else None
+    date_iso = tx_date.isoformat() if tx_date else ""
+    source_hash = _jays_stats2_signature(date_iso, description, amount, running_balance)
+    return {
+        "date": tx_date,
+        "dateISO": date_iso,
+        "description": description[:500],
+        "amount": amount,
+        "runningBalance": running_balance,
+        "sourceKind": source_kind,
+        "sourceFileName": str(source_file_name or "")[:260],
+        "sourceHash": source_hash,
+        "raw": row,
+    }
+
+
+def _jays_stats2_serialise_row(row: dict) -> dict:
+    tx_date = row.get("transaction_date")
+    if isinstance(tx_date, datetime):
+        tx_date = tx_date.date()
+    return {
+        "id": str(row.get("id") or ""),
+        "date": tx_date.isoformat() if isinstance(tx_date, date) else "",
+        "description": str(row.get("description") or ""),
+        "amount": float(_money(row.get("amount"))),
+        "runningBalance": float(_money(row.get("running_balance"))) if row.get("running_balance") is not None else None,
+        "sourceKind": str(row.get("source_kind") or ""),
+        "sourceFileName": str(row.get("source_file_name") or ""),
+        "categoryStreamKey": _jays_stats2_normalise_stream_key(row.get("category_stream_key"), row.get("category_stream_label")),
+        "categoryStreamLabel": str(row.get("category_stream_label") or _jays_stats2_stream_label(row.get("category_stream_key"))),
+        "categoryConfidence": float(_money(row.get("category_confidence"))) if row.get("category_confidence") is not None else None,
+        "categorySource": str(row.get("category_source") or "unclassified"),
+        "categoryUpdatedAt": _iso(row.get("category_updated_at")) or "",
+        "createdAt": _iso(row.get("created_at")) or "",
+    }
+
+
+async def jays_stats2_workspace(user: dict, limit: int = 500) -> dict:
+    _ensure_jays_stats2_tables()
+    tenant_id = _bank_statement_tenant_id(user)
+    user_id = str(user.get("id") or "")
+    rows: list[dict] = []
+    summary = {
+        "transactionCount": 0,
+        "earliestDate": "",
+        "latestDate": "",
+        "latestRunningBalance": None,
+        "creditsTotal": 0.0,
+        "debitsTotal": 0.0,
+    }
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       transaction_date,
+                       description,
+                       amount,
+                       running_balance,
+                       source_kind,
+                       source_file_name,
+                       category_stream_key,
+                       category_stream_label,
+                       category_confidence,
+                       category_source,
+                       category_updated_at,
+                       created_at
+                FROM jays_stats2_transactions
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                ORDER BY transaction_date DESC NULLS LAST, created_at DESC
+                LIMIT %s
+                """,
+                (user_id, tenant_id, max(50, min(int(limit or 500), 2000))),
+            )
+            rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS tx_count,
+                       MIN(transaction_date) AS earliest_date,
+                       MAX(transaction_date) AS latest_date,
+                       COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) AS credits_total,
+                       COALESCE(SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END), 0) AS debits_total,
+                       COALESCE(SUM(CASE WHEN amount > 0 AND category_stream_key = 'unclassified' THEN 1 ELSE 0 END), 0) AS uncategorised_credit_count
+                FROM jays_stats2_transactions
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                """,
+                (user_id, tenant_id),
+            )
+            stats_row = cursor.fetchone() or {}
+            cursor.execute(
+                """
+                SELECT running_balance
+                FROM jays_stats2_transactions
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                  AND running_balance IS NOT NULL
+                ORDER BY transaction_date DESC NULLS LAST, created_at DESC
+                LIMIT 1
+                """,
+                (user_id, tenant_id),
+            )
+            balance_row = cursor.fetchone() or {}
+        connection.commit()
+
+    summary["transactionCount"] = int(stats_row.get("tx_count") or 0)
+    earliest_date = stats_row.get("earliest_date")
+    latest_date = stats_row.get("latest_date")
+    if isinstance(earliest_date, datetime):
+        earliest_date = earliest_date.date()
+    if isinstance(latest_date, datetime):
+        latest_date = latest_date.date()
+    summary["earliestDate"] = earliest_date.isoformat() if isinstance(earliest_date, date) else ""
+    summary["latestDate"] = latest_date.isoformat() if isinstance(latest_date, date) else ""
+    summary["latestRunningBalance"] = (
+        float(_money(balance_row.get("running_balance"))) if balance_row.get("running_balance") is not None else None
+    )
+    summary["creditsTotal"] = float(_money(stats_row.get("credits_total")))
+    summary["debitsTotal"] = float(_money(abs(_money(stats_row.get("debits_total")))))
+    summary["uncategorisedCreditCount"] = int(stats_row.get("uncategorised_credit_count") or 0)
+
+    return {
+        "account": {
+            "name": JAYS_STATS2_ACCOUNT_NAME,
+            "sortCode": JAYS_STATS2_SORT_CODE,
+            "accountNumber": JAYS_STATS2_ACCOUNT_NUMBER,
+        },
+        "summary": summary,
+        "categoryStreams": JAYS_STATS2_STREAMS,
+        "transactions": [_jays_stats2_serialise_row(row) for row in rows],
+    }
+
+
+async def jays_stats2_import_transactions(user: dict, file_items: list[dict]) -> dict:
+    _ensure_jays_stats2_tables()
+    tenant_id = _bank_statement_tenant_id(user)
+    user_id = str(user.get("id") or "")
+    category_rules = _jays_stats2_load_category_rules(user_id, tenant_id)
+    extracted_rows: list[dict] = []
+    parser_messages: list[str] = []
+    file_summaries: dict[str, dict] = {}
+    file_order: list[str] = []
+
+    def _file_summary(name: str) -> dict:
+        key = str(name or "statement")
+        summary = file_summaries.get(key)
+        if summary:
+            return summary
+        summary = {
+            "fileName": key,
+            "extractedCount": 0,
+            "processedCount": 0,
+            "importedCount": 0,
+            "duplicateExistingCount": 0,
+            "duplicateInFileCount": 0,
+        }
+        file_summaries[key] = summary
+        file_order.append(key)
+        return summary
+
+    for item in file_items:
+        file_name = str(item.get("filename") or "statement")
+        content_type = str(item.get("content_type") or "")
+        file_bytes = bytes(item.get("bytes") or b"")
+        lower_name = file_name.lower()
+        file_summary = _file_summary(file_name)
+
+        if lower_name.endswith(".csv") or "csv" in content_type:
+            rows = _jays_stats_parse_csv_transactions(file_bytes)
+            extracted_rows.extend(_jays_stats2_normalise_transaction(row, "csv", file_name) for row in rows)
+            file_summary["extractedCount"] += len(rows)
+            continue
+        if lower_name.endswith((".xlsx", ".xlsm")) or "sheet" in content_type or "excel" in content_type:
+            rows = _jays_stats_parse_xlsx_transactions(file_bytes)
+            extracted_rows.extend(_jays_stats2_normalise_transaction(row, "spreadsheet", file_name) for row in rows)
+            file_summary["extractedCount"] += len(rows)
+            continue
+        if lower_name.endswith(".xls"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported file type for {file_name}. Save it as .xlsx, .csv, or PDF and upload again.",
+            )
+        if lower_name.endswith(".pdf") or "pdf" in content_type:
+            rows = _jays_stats_parse_pdf_transactions_local(file_bytes)
+            if not rows:
+                extracted = await _extract_bank_statement_pdf(file_bytes, file_name, {"account_number": "", "bank_name": ""})
+                rows = []
+                for transaction in extracted.get("transactions") or []:
+                    if not isinstance(transaction, dict):
+                        continue
+                    rows.append({
+                        "date": transaction.get("date"),
+                        "description": transaction.get("description") or transaction.get("payee") or "",
+                        "amount": transaction.get("amount"),
+                        "runningBalance": transaction.get("balance"),
+                        "source": "pdf-openai",
+                    })
+                parser_messages.append(f"{file_name}: used OpenAI extraction fallback.")
+            extracted_rows.extend(_jays_stats2_normalise_transaction(row, "pdf", file_name) for row in rows)
+            file_summary["extractedCount"] += len(rows)
+            continue
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type for {file_name}. Upload PDF, CSV, or .xlsx statements.",
+        )
+
+    normalised_rows = [_jays_stats2_apply_category_rules(row, category_rules) for row in extracted_rows if isinstance(row, dict)]
+    if not normalised_rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No transactions could be extracted. Confirm the statement format includes date, description, and amount columns.",
+        )
+
+    seen_signatures: set[str] = set()
+    deduped_rows: list[dict] = []
+    duplicate_in_file = 0
+    for row in normalised_rows:
+        signature = str(row.get("sourceHash") or "")
+        if not signature:
+            continue
+        file_name = str(row.get("sourceFileName") or "statement")
+        summary = _file_summary(file_name)
+        if signature in seen_signatures:
+            duplicate_in_file += 1
+            summary["duplicateInFileCount"] += 1
+            continue
+        seen_signatures.add(signature)
+        summary["processedCount"] += 1
+        deduped_rows.append(row)
+
+    inserted = 0
+    duplicate_existing = 0
+    imported_samples: list[dict] = []
+    duplicate_samples: list[dict] = []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for row in deduped_rows:
+                file_name = str(row.get("sourceFileName") or "statement")
+                summary = _file_summary(file_name)
+                cursor.execute(
+                    """
+                    INSERT INTO jays_stats2_transactions (
+                        id,
+                        user_id,
+                        tenant_id,
+                        transaction_date,
+                        description,
+                        amount,
+                        running_balance,
+                        source_kind,
+                        source_file_name,
+                        category_stream_key,
+                        category_stream_label,
+                        category_confidence,
+                        category_source,
+                        category_updated_at,
+                        source_hash,
+                        raw,
+                        created_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                    ON CONFLICT (user_id, tenant_id, source_hash) DO NOTHING
+                    RETURNING id
+                    """,
+                    (
+                        str(uuid4()),
+                        user_id,
+                        tenant_id,
+                        row.get("date"),
+                        row.get("description"),
+                        row.get("amount"),
+                        row.get("runningBalance"),
+                        row.get("sourceKind"),
+                        row.get("sourceFileName"),
+                        _jays_stats2_normalise_stream_key(row.get("categoryStreamKey"), row.get("categoryStreamLabel")),
+                        str(row.get("categoryStreamLabel") or _jays_stats2_stream_label(row.get("categoryStreamKey"))),
+                        row.get("categoryConfidence"),
+                        str(row.get("categorySource") or "unclassified"),
+                        utcnow(),
+                        row.get("sourceHash"),
+                        json.dumps(row.get("raw") if isinstance(row.get("raw"), dict) else {}, default=_json_default),
+                        utcnow(),
+                    ),
+                )
+                if cursor.fetchone():
+                    inserted += 1
+                    summary["importedCount"] += 1
+                    if len(imported_samples) < 20:
+                        imported_samples.append({
+                            "date": str(row.get("date") or ""),
+                            "description": str(row.get("description") or ""),
+                            "amount": float(_money(row.get("amount"))),
+                            "fileName": file_name,
+                        })
+                else:
+                    duplicate_existing += 1
+                    summary["duplicateExistingCount"] += 1
+                    if len(duplicate_samples) < 20:
+                        duplicate_samples.append({
+                            "reason": "already-on-file",
+                            "date": str(row.get("date") or ""),
+                            "description": str(row.get("description") or ""),
+                            "amount": float(_money(row.get("amount"))),
+                            "fileName": file_name,
+                        })
+        connection.commit()
+
+    workspace = await jays_stats2_workspace(user)
+    extracted_count = sum(int((file_summaries.get(name) or {}).get("extractedCount") or 0) for name in file_order)
+    file_summary_rows = [file_summaries[name] for name in file_order if name in file_summaries]
+    return {
+        "importedCount": inserted,
+        "duplicateCount": duplicate_existing,
+        "duplicateInFileCount": duplicate_in_file,
+        "processedCount": len(deduped_rows),
+        "extractedCount": extracted_count,
+        "messages": parser_messages,
+        "fileSummaries": file_summary_rows,
+        "importedSamples": imported_samples,
+        "duplicateSamples": duplicate_samples,
+        "workspace": workspace,
+    }
+
+
+def _jays_stats2_upsert_category_rule(
+    user_id: str,
+    tenant_id: str,
+    match_key: str,
+    stream_key: str,
+    stream_label: str,
+    *,
+    source: str = "manual",
+) -> None:
+    clean_match_key = str(match_key or "").strip()
+    clean_stream_key = _jays_stats2_normalise_stream_key(stream_key, stream_label)
+    clean_stream_label = _jays_stats2_stream_label(clean_stream_key)
+    if not clean_match_key:
+        return
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO jays_stats2_category_rules (
+                    id,
+                    user_id,
+                    tenant_id,
+                    match_key,
+                    stream_key,
+                    stream_label,
+                    source,
+                    hit_count,
+                    created_at,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 1, %s, %s)
+                ON CONFLICT (user_id, tenant_id, match_key)
+                DO UPDATE SET
+                    stream_key = EXCLUDED.stream_key,
+                    stream_label = EXCLUDED.stream_label,
+                    source = EXCLUDED.source,
+                    hit_count = jays_stats2_category_rules.hit_count + 1,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    str(uuid4()),
+                    user_id,
+                    tenant_id,
+                    clean_match_key,
+                    clean_stream_key,
+                    clean_stream_label,
+                    str(source or "manual")[:40],
+                    utcnow(),
+                    utcnow(),
+                ),
+            )
+        connection.commit()
+
+
+async def jays_stats2_update_transaction_category(user: dict, transaction_id: str, payload: dict | None = None) -> dict:
+    _ensure_jays_stats2_tables()
+    tenant_id = _bank_statement_tenant_id(user)
+    user_id = str(user.get("id") or "")
+    body = payload if isinstance(payload, dict) else {}
+    stream_key = _jays_stats2_normalise_stream_key(body.get("streamKey"), body.get("streamLabel"))
+    stream_label = _jays_stats2_stream_label(stream_key)
+    learn = bool(body.get("learnRule", True))
+    tx_id = str(transaction_id or "").strip()
+    if not tx_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction id is required.")
+
+    row = None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE jays_stats2_transactions
+                SET category_stream_key = %s,
+                    category_stream_label = %s,
+                    category_confidence = %s,
+                    category_source = %s,
+                    category_updated_at = %s
+                WHERE id = %s
+                  AND user_id = %s
+                  AND tenant_id = %s
+                RETURNING id, description, category_stream_key, category_stream_label, category_source, category_confidence
+                """,
+                (
+                    stream_key,
+                    stream_label,
+                    Decimal("1.0"),
+                    "manual",
+                    utcnow(),
+                    tx_id,
+                    user_id,
+                    tenant_id,
+                ),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found.")
+
+    if learn:
+        match_key = _jays_stats2_description_match_key(row.get("description"))
+        if match_key:
+            _jays_stats2_upsert_category_rule(
+                user_id,
+                tenant_id,
+                match_key,
+                stream_key,
+                stream_label,
+                source="manual",
+            )
+
+    workspace = await jays_stats2_workspace(user)
+    return {
+        "transactionId": tx_id,
+        "streamKey": stream_key,
+        "streamLabel": stream_label,
+        "learned": bool(learn),
+        "workspace": workspace,
+    }
+
+
+JAYS_STATS2_AI_CATEGORY_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["matches"],
+    "properties": {
+        "matches": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "streamKey", "confidence", "reason"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "streamKey": {"type": "string"},
+                    "confidence": {"type": "number"},
+                    "reason": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+
+
+async def jays_stats2_ai_categorise(user: dict, payload: dict | None = None) -> dict:
+    _ensure_jays_stats2_tables()
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI is not configured.")
+
+    tenant_id = _bank_statement_tenant_id(user)
+    user_id = str(user.get("id") or "")
+    body = payload if isinstance(payload, dict) else {}
+    month_key = str(body.get("monthKey") or "").strip()
+    limit = max(20, min(int(body.get("limit") or 200), 500))
+    target_ids = [str(item).strip() for item in (body.get("transactionIds") or []) if str(item).strip()]
+
+    where_parts = ["user_id = %s", "tenant_id = %s", "amount > 0"]
+    params: list[object] = [user_id, tenant_id]
+    if target_ids:
+        where_parts.append("id = ANY(%s)")
+        params.append(target_ids)
+    else:
+        where_parts.append("(category_stream_key = 'unclassified' OR category_stream_key = '' OR category_stream_key IS NULL)")
+        if re.fullmatch(r"\d{4}-\d{2}", month_key):
+            where_parts.append("TO_CHAR(transaction_date, 'YYYY-MM') = %s")
+            params.append(month_key)
+
+    rows: list[dict] = []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT id, transaction_date, description, amount, source_file_name
+                FROM jays_stats2_transactions
+                WHERE {" AND ".join(where_parts)}
+                ORDER BY transaction_date DESC NULLS LAST, created_at DESC
+                LIMIT %s
+                """,
+                [*params, limit],
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+
+    if not rows:
+        workspace = await jays_stats2_workspace(user)
+        return {"updatedCount": 0, "learnedRuleCount": 0, "workspace": workspace}
+
+    candidates = []
+    for row in rows:
+        tx_date = row.get("transaction_date")
+        if isinstance(tx_date, datetime):
+            tx_date = tx_date.date()
+        candidates.append({
+            "id": str(row.get("id") or ""),
+            "date": tx_date.isoformat() if isinstance(tx_date, date) else "",
+            "description": str(row.get("description") or ""),
+            "amount": float(_money(row.get("amount"))),
+            "sourceFileName": str(row.get("source_file_name") or ""),
+        })
+
+    request_body = {
+        "input": [{
+            "role": "user",
+            "content": [{
+                "type": "input_text",
+                "text": (
+                    "Categorise each cash-in transaction into one streamKey.\n"
+                    "Allowed streamKey values: ignition-disbursals, stripe-income, vending-income, bank-transfers, other-income, internal-transfer, ignore, unclassified.\n"
+                    "Use 'unclassified' only if unsure.\n"
+                    f"Transactions JSON:\n{json.dumps(candidates, default=_json_default)}"
+                ),
+            }],
+        }],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "jays_stats2_ai_categorise",
+                "schema": JAYS_STATS2_AI_CATEGORY_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 2200,
+    }
+    response_payload = await _post_openai_responses(
+        request_body,
+        "Jays Stats 2 transaction categorisation",
+        preferred_model=settings.openai_model,
+        timeout_seconds=35,
+        user_id=user_id,
+        feature="openai-core",
+        page="jays-stats-2",
+    )
+    parsed = _load_openai_json_response(response_payload, "OpenAI returned invalid JSON for Jays Stats 2 categorisation.")
+    matches = parsed.get("matches") if isinstance(parsed, dict) else []
+    if not isinstance(matches, list):
+        matches = []
+
+    updated_count = 0
+    learned_rules = 0
+    id_to_description = {str(item.get("id") or ""): str(item.get("description") or "") for item in candidates}
+    pending_rules: list[tuple[str, str, str]] = []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for item in matches:
+                if not isinstance(item, dict):
+                    continue
+                tx_id = str(item.get("id") or "").strip()
+                if not tx_id:
+                    continue
+                stream_key = _jays_stats2_normalise_stream_key(item.get("streamKey"), "")
+                confidence = Decimal(str(item.get("confidence") or "0"))
+                if confidence < Decimal("0.50"):
+                    stream_key = "unclassified"
+                stream_label = _jays_stats2_stream_label(stream_key)
+                cursor.execute(
+                    """
+                    UPDATE jays_stats2_transactions
+                    SET category_stream_key = %s,
+                        category_stream_label = %s,
+                        category_confidence = %s,
+                        category_source = %s,
+                        category_updated_at = %s
+                    WHERE id = %s
+                      AND user_id = %s
+                      AND tenant_id = %s
+                    """,
+                    (
+                        stream_key,
+                        stream_label,
+                        _money(confidence),
+                        "ai",
+                        utcnow(),
+                        tx_id,
+                        user_id,
+                        tenant_id,
+                    ),
+                )
+                if cursor.rowcount:
+                    updated_count += 1
+                    if stream_key not in {"unclassified", "ignore"} and confidence >= Decimal("0.80"):
+                        match_key = _jays_stats2_description_match_key(id_to_description.get(tx_id))
+                        if match_key:
+                            pending_rules.append((match_key, stream_key, stream_label))
+        connection.commit()
+    for match_key, stream_key, stream_label in pending_rules:
+        _jays_stats2_upsert_category_rule(
+            user_id,
+            tenant_id,
+            match_key,
+            stream_key,
+            stream_label,
+            source="ai",
+        )
+    learned_rules = len(pending_rules)
+    workspace = await jays_stats2_workspace(user)
+    return {"updatedCount": updated_count, "learnedRuleCount": learned_rules, "workspace": workspace}
 
 
 async def jays_stats_ignition_daily(user: dict, month_key: str, day_iso: str) -> dict:
