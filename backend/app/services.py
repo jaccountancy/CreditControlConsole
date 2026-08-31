@@ -39364,6 +39364,226 @@ def bank_statement_payload(user: dict) -> dict:
     }
 
 
+JAYS_STATS_INTERNAL_TRANSFER_RE = re.compile(
+    r"\b(?:internal transfer|between accounts|own account|transfer to savings|sweep|journal transfer|to jaccountancy|from jaccountancy)\b",
+    re.IGNORECASE,
+)
+
+
+def _jays_stats_signature(date_iso: str, description: str, amount: Decimal) -> tuple[str, str, str]:
+    return (
+        str(date_iso or "").strip(),
+        re.sub(r"\s+", " ", str(description or "").strip().lower()),
+        f"{_money(amount):.2f}",
+    )
+
+
+def _jays_stats_parse_date(value) -> date | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y", "%d %b %Y", "%d %B %Y"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def _jays_stats_parse_csv_credits(file_bytes: bytes, month_key: str) -> list[dict]:
+    text = ""
+    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+        try:
+            text = file_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if not text:
+        return []
+
+    rows = []
+    reader = csv.DictReader(io.StringIO(text))
+    headers = [str(field or "").strip() for field in (reader.fieldnames or [])]
+    if not headers:
+        return []
+    by_norm = {re.sub(r"[^a-z0-9]+", "", header.lower()): header for header in headers}
+
+    def key(*candidates: str) -> str:
+        for candidate in candidates:
+            exact = by_norm.get(candidate)
+            if exact:
+                return exact
+        return ""
+
+    date_key = key("date", "transactiondate", "valuedate", "posteddate")
+    desc_key = key("description", "details", "narrative", "payee", "reference", "memo")
+    amount_key = key("amount", "transactionamount", "value")
+    credit_key = key("credit", "deposit", "paidin", "moneyin")
+    debit_key = key("debit", "withdrawal", "paidout", "moneyout")
+
+    for row in reader:
+        if not isinstance(row, dict):
+            continue
+        tx_date = _jays_stats_parse_date(row.get(date_key) if date_key else "")
+        if tx_date and month_key and tx_date.strftime("%Y-%m") != month_key:
+            continue
+        description = str(row.get(desc_key) if desc_key else "").strip()
+        if not description:
+            description = "Statement transaction"
+        amount = Decimal("0.00")
+        if credit_key:
+            credit = _money(row.get(credit_key))
+            if credit > Decimal("0.00"):
+                amount = credit
+        if amount <= Decimal("0.00") and amount_key:
+            amount = _money(row.get(amount_key))
+        if amount <= Decimal("0.00") and debit_key:
+            debit = _money(row.get(debit_key))
+            if debit > Decimal("0.00"):
+                amount = -debit
+        if amount <= Decimal("0.00"):
+            continue
+        date_iso = tx_date.isoformat() if tx_date else ""
+        rows.append({"date": date_iso, "description": description, "amount": float(_money(amount)), "source": "csv"})
+    return rows
+
+
+async def jays_stats_bank_credits_import(user: dict, month_key: str, file_items: list[dict]) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    month_key_value = str(month_key or "").strip()
+    if month_key_value and not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month_key_value):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Month key must use YYYY-MM format.")
+
+    existing_signatures: set[tuple[str, str, str]] = set()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if month_key_value:
+                start = datetime.strptime(f"{month_key_value}-01", "%Y-%m-%d").date()
+                end = start.replace(day=monthrange(start.year, start.month)[1])
+                cursor.execute(
+                    """
+                    SELECT transactions.transaction_date,
+                           transactions.description,
+                           COALESCE(transactions.manual_amount, transactions.amount) AS effective_amount
+                    FROM bank_statement_transactions AS transactions
+                    JOIN bank_statement_accounts AS accounts ON accounts.id = transactions.bank_account_id
+                    JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
+                    WHERE clients.tenant_id = %s
+                      AND clients.status = 'active'
+                      AND transactions.transaction_date >= %s
+                      AND transactions.transaction_date <= %s
+                      AND COALESCE(transactions.manual_amount, transactions.amount) > 0
+                    """,
+                    (tenant_id, start, end),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT transactions.transaction_date,
+                           transactions.description,
+                           COALESCE(transactions.manual_amount, transactions.amount) AS effective_amount
+                    FROM bank_statement_transactions AS transactions
+                    JOIN bank_statement_accounts AS accounts ON accounts.id = transactions.bank_account_id
+                    JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
+                    WHERE clients.tenant_id = %s
+                      AND clients.status = 'active'
+                      AND COALESCE(transactions.manual_amount, transactions.amount) > 0
+                    ORDER BY transactions.created_at DESC
+                    LIMIT 50000
+                    """,
+                    (tenant_id,),
+                )
+            for row in cursor.fetchall() or []:
+                transaction_date = row.get("transaction_date")
+                if isinstance(transaction_date, datetime):
+                    transaction_date = transaction_date.date()
+                date_iso = transaction_date.isoformat() if isinstance(transaction_date, date) else ""
+                existing_signatures.add(
+                    _jays_stats_signature(date_iso, str(row.get("description") or ""), _money(row.get("effective_amount")))
+                )
+        connection.commit()
+
+    extracted_rows: list[dict] = []
+    for item in file_items:
+        file_name = str(item.get("filename") or "statement")
+        content_type = str(item.get("content_type") or "")
+        file_bytes = bytes(item.get("bytes") or b"")
+        lower_name = file_name.lower()
+        if lower_name.endswith(".csv") or "csv" in content_type:
+            extracted_rows.extend(_jays_stats_parse_csv_credits(file_bytes, month_key_value))
+            continue
+        if lower_name.endswith(".pdf") or "pdf" in content_type:
+            extracted = await _extract_bank_statement_pdf(file_bytes, file_name, {"account_number": "", "bank_name": ""})
+            for transaction in extracted.get("transactions") or []:
+                if not isinstance(transaction, dict):
+                    continue
+                tx_date = _jays_stats_parse_date(transaction.get("date"))
+                if tx_date and month_key_value and tx_date.strftime("%Y-%m") != month_key_value:
+                    continue
+                amount = _money(transaction.get("amount"))
+                if amount <= Decimal("0.00"):
+                    continue
+                description = str(transaction.get("description") or "").strip() or str(transaction.get("payee") or "").strip() or "Statement transaction"
+                extracted_rows.append({
+                    "date": tx_date.isoformat() if tx_date else "",
+                    "description": description,
+                    "amount": float(_money(amount)),
+                    "source": "pdf",
+                })
+            continue
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type for {file_name}. Upload CSV or PDF statements.",
+        )
+
+    seen_in_request: set[tuple[str, str, str]] = set()
+    ignored_internal = 0
+    duplicates = 0
+    included_count = 0
+    total = Decimal("0.00")
+    for row in extracted_rows:
+        description = str(row.get("description") or "").strip()
+        if JAYS_STATS_INTERNAL_TRANSFER_RE.search(description):
+            ignored_internal += 1
+            continue
+        amount = _money(row.get("amount"))
+        if amount <= Decimal("0.00"):
+            continue
+        signature = _jays_stats_signature(str(row.get("date") or ""), description, amount)
+        if signature in seen_in_request or signature in existing_signatures:
+            duplicates += 1
+            continue
+        seen_in_request.add(signature)
+        included_count += 1
+        total += amount
+
+    return {
+        "monthKey": month_key_value,
+        "creditsTotal": float(_money(total)),
+        "creditsCount": included_count,
+        "duplicateCount": duplicates,
+        "ignoredInternalTransfers": ignored_internal,
+        "bankTransfers": float(_money(total)),
+    }
+
+
+async def jays_stats_ignition_daily(user: dict, month_key: str, day_iso: str) -> dict:
+    payload = ignition_payload(user, include_dashboard=True)
+    totals = payload.get("dashboard", {}).get("totals", {}) if isinstance(payload, dict) else {}
+    ignition_disbursals = _money(totals.get("collectionDisbursements") or totals.get("paymentsReceivedMtd") or 0)
+    ignition_estimate = _money(totals.get("awaitingProposalValue") or 0)
+    return {
+        "monthKey": str(month_key or ""),
+        "date": str(day_iso or ""),
+        "ignitionDisbursals": float(ignition_disbursals),
+        "ignitionDisbursalEstimate": float(ignition_estimate),
+        "source": "ignition-dashboard",
+    }
+
+
 JAYS_BUDGET_AI_RESPONSE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,

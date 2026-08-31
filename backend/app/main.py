@@ -159,9 +159,11 @@ from .services import (
     delete_jashflow_loan,
     jashflow_payload,
     jashflow_interest_preview,
+    jays_stats_bank_credits_import,
     jays_stats_budget_ai_chat,
     jays_stats_budget_publish,
     jays_stats_budget_workspace,
+    jays_stats_ignition_daily,
     post_jashflow_interest_invoice,
     save_jashflow_settings,
     update_jashflow_loan,
@@ -5154,6 +5156,50 @@ async def api_juk_equity(user: dict = Depends(require_panel_user)):
 @app.get("/api/jays-stats/budget")
 async def api_jays_stats_budget(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "budget": await jays_stats_budget_workspace(user)}
+
+
+@app.get("/api/jays-stats")
+def api_jays_stats(user: dict = Depends(require_panel_user)):
+    return {
+        "status": "ok",
+        "serverNow": utcnow().isoformat(),
+    }
+
+
+@app.post("/api/jays-stats/close-month")
+async def api_jays_stats_close_month(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    month_key = str((payload or {}).get("monthKey") or "").strip()
+    return {"status": "ok", "monthKey": month_key, "closedAt": utcnow().isoformat()}
+
+
+@app.get("/api/jays-stats/ignition-daily")
+async def api_jays_stats_ignition_daily(
+    monthKey: str = Query(""),
+    date: str = Query(""),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **await jays_stats_ignition_daily(user, monthKey, date)}
+
+
+@app.post("/api/jays-stats/bank-credits")
+async def api_jays_stats_bank_credits(
+    monthKey: str = Form(""),
+    date: str = Form(""),
+    files: list[UploadFile] = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload at least one statement file.")
+    items = []
+    for upload in files:
+        items.append({
+            "filename": upload.filename or "statement",
+            "content_type": upload.content_type or "",
+            "bytes": await upload.read(),
+        })
+    result = await jays_stats_bank_credits_import(user, monthKey, items)
+    return {"status": "ok", "date": date, **result}
 
 
 @app.post("/api/jays-stats/budget/ai-chat")

@@ -53107,7 +53107,8 @@
                 return contentType.includes("application/json") ? payload : null;
             }
 
-            async function requestFormData(template, formData, params = {}) {
+            async function requestFormData(template, formData, params = {}, options = {}) {
+                const suppressFailurePanel = Boolean(options && options.suppressFailurePanel);
                 const activityContext = requestActivityContext(template, { method: "POST", body: formData }, params);
                 const startedAt = performance.now();
                 const resolvedEndpoint = endpointURL(template, params);
@@ -53129,14 +53130,16 @@
                         durationMs: Math.round(performance.now() - startedAt),
                         error: error?.message || String(error || "Network request failed")
                     });
-                    openFailureDetailsPanel({
-                        title: "Network upload failed",
-                        summary: `Unable to reach API for ${activityContext?.label || "upload request"}.`,
-                        endpoint: resolvedEndpoint,
-                        method: "POST",
-                        message: error?.message || "Network request failed",
-                        details: { error: error?.message || String(error || "Network request failed") },
-                    });
+                    if (!suppressFailurePanel) {
+                        openFailureDetailsPanel({
+                            title: "Network upload failed",
+                            summary: `Unable to reach API for ${activityContext?.label || "upload request"}.`,
+                            endpoint: resolvedEndpoint,
+                            method: "POST",
+                            message: error?.message || "Network request failed",
+                            details: { error: error?.message || String(error || "Network request failed") },
+                        });
+                    }
                     throw error;
                 }
                 const contentType = response.headers.get("content-type") || "";
@@ -53155,15 +53158,17 @@
                         error: message,
                         response: sanitiseActivityValue(payload)
                     });
-                    openFailureDetailsPanel({
-                        title: "Authentication required",
-                        summary: `Session/authentication failed for ${activityContext?.label || "upload request"}.`,
-                        endpoint: resolvedEndpoint,
-                        method: "POST",
-                        statusCode: response.status,
-                        message,
-                        details: payload,
-                    });
+                    if (!suppressFailurePanel) {
+                        openFailureDetailsPanel({
+                            title: "Authentication required",
+                            summary: `Session/authentication failed for ${activityContext?.label || "upload request"}.`,
+                            endpoint: resolvedEndpoint,
+                            method: "POST",
+                            statusCode: response.status,
+                            message,
+                            details: payload,
+                        });
+                    }
                     throw new AuthRequiredError(message);
                 }
                 if (!response.ok) {
@@ -53177,15 +53182,17 @@
                         error: String(baseMessage),
                         response: sanitiseActivityValue(payload)
                     });
-                    openFailureDetailsPanel({
-                        title: "API upload failed",
-                        summary: `Backend returned an error for ${activityContext?.label || "upload request"}.`,
-                        endpoint: resolvedEndpoint,
-                        method: "POST",
-                        statusCode: response.status,
-                        message: String(baseMessage),
-                        details: detail || payload,
-                    });
+                    if (!suppressFailurePanel) {
+                        openFailureDetailsPanel({
+                            title: "API upload failed",
+                            summary: `Backend returned an error for ${activityContext?.label || "upload request"}.`,
+                            endpoint: resolvedEndpoint,
+                            method: "POST",
+                            statusCode: response.status,
+                            message: String(baseMessage),
+                            details: detail || payload,
+                        });
+                    }
                     throw new APIRequestError(String(baseMessage), { statusCode: response.status, details: detail || payload });
                 }
                 logAPIActivity("api.completed", activityContext, {
@@ -87740,7 +87747,7 @@
                 renderJaysStatsScreen();
                 try {
                     const payload = await requestJSON(api.endpoints.jaysStats, { suppressFailurePanel: true, timeoutMs: 9000 });
-                    if (payload && typeof payload === "object") {
+                    if (payload && typeof payload === "object" && Array.isArray(payload.months)) {
                         jaysStatsState = normaliseJaysStatsState(payload);
                         persistJaysStatsState();
                     }
@@ -87911,7 +87918,7 @@
                         formData.append("monthKey", month.monthKey);
                         formData.append("date", date);
                         files.forEach((file) => formData.append("files", file, file.name));
-                        const payload = await requestFormData(api.endpoints.jaysStatsBankCredits, formData);
+                        const payload = await requestFormData(api.endpoints.jaysStatsBankCredits, formData, {}, { suppressFailurePanel: true });
                         totalCredits = Number(payload?.creditsTotal || payload?.bankTransfers || 0);
                         if (Number.isFinite(totalCredits) && totalCredits > 0) {
                         const input = document.getElementById("jaysStatsBankTransfersInput");
