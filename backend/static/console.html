@@ -37132,6 +37132,10 @@
                 background: #fff3df;
                 color: #7c4e08;
             }
+            #jaysStatsScreen .jays-stats-source-badge.is-ai-populate {
+                background: #ecf8ef;
+                color: #1f7a3a;
+            }
             #jaysStatsScreen .jays-stats-input-grid input,
             #jaysStatsScreen .jays-stats-input-grid textarea {
                 border: 1px solid var(--line);
@@ -37139,6 +37143,34 @@
                 padding: 8px 10px;
                 background: #fff;
                 color: var(--ink);
+            }
+            #jaysStatsScreen .jays-stats-custom-group {
+                grid-column: 1 / -1;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: var(--surface-soft);
+                padding: 10px;
+                display: grid;
+                gap: 10px;
+            }
+            #jaysStatsScreen .jays-stats-custom-group-head {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 8px;
+            }
+            #jaysStatsScreen .jays-stats-custom-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 10px;
+            }
+            #jaysStatsScreen .jays-stats-custom-grid label {
+                margin: 0;
+            }
+            #jaysStatsScreen .jays-stats-meta-note {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.78rem;
             }
             #jaysStatsScreen .jays-stats-input-grid .jays-stats-wide {
                 grid-column: 1 / -1;
@@ -48952,6 +48984,17 @@
                 "bankTransfers",
                 "otherIncome",
                 "expectedCashCollectionSoFar",
+                "bankIncomingEstimate",
+                "ignitionDisbursalEstimate"
+            ];
+            const jaysStatsCoreIncomeFields = [
+                "ignitionDisbursals",
+                "stripeIncome",
+                "vendingMachineIncome",
+                "bankTransfers",
+                "otherIncome"
+            ];
+            const jaysStatsCoreEstimateFields = [
                 "bankIncomingEstimate",
                 "ignitionDisbursalEstimate"
             ];
@@ -62311,7 +62354,7 @@
 
             function jaysStatsNormaliseSource(value) {
                 const source = String(value || "").trim().toLowerCase();
-                if (source === "bank-import" || source === "ignition-pull") return source;
+                if (source === "bank-import" || source === "ignition-pull" || source === "ai-populate") return source;
                 return "manual";
             }
 
@@ -62327,13 +62370,46 @@
             function jaysStatsSourceBadgeClass(source) {
                 if (source === "bank-import") return "jays-stats-source-badge is-bank-import";
                 if (source === "ignition-pull") return "jays-stats-source-badge is-ignition-pull";
+                if (source === "ai-populate") return "jays-stats-source-badge is-ai-populate";
                 return "jays-stats-source-badge";
             }
 
             function jaysStatsSourceLabel(source) {
                 if (source === "bank-import") return "bank-import";
                 if (source === "ignition-pull") return "ignition-pull";
+                if (source === "ai-populate") return "ai-populate";
                 return "manual";
+            }
+
+            function jaysStatsNormaliseStreamKey(value = "", fallbackPrefix = "stream") {
+                const cleaned = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+                return cleaned || `${fallbackPrefix}-${Date.now().toString(36)}`;
+            }
+
+            function jaysStatsNormaliseStreamDefinitions(definitions = [], fallbackPrefix = "stream") {
+                const items = Array.isArray(definitions) ? definitions : [];
+                const usedKeys = new Set();
+                const output = [];
+                items.forEach((item, index) => {
+                    const label = String(item?.label || item?.name || item || "").trim().slice(0, 80);
+                    if (!label) return;
+                    let key = jaysStatsNormaliseStreamKey(item?.key || label, fallbackPrefix);
+                    if (usedKeys.has(key)) key = `${key}-${index + 1}`;
+                    usedKeys.add(key);
+                    output.push({ key, label });
+                });
+                return output;
+            }
+
+            function jaysStatsNormaliseDynamicValues(values = {}, definitions = []) {
+                const payload = values && typeof values === "object" ? values : {};
+                const output = {};
+                definitions.forEach((definition) => {
+                    const key = String(definition?.key || "").trim();
+                    if (!key) return;
+                    output[key] = jaysStatsNumber(payload[key]);
+                });
+                return output;
             }
 
             function jaysStatsSetPendingSource(field, source) {
@@ -62391,12 +62467,16 @@
                     status: status === "closed" ? "closed" : "open",
                     closedAt: status === "closed" ? new Date().toISOString() : "",
                     entries: [],
+                    customIncomeStreams: [],
+                    customEstimateStreams: [],
                     internalTransferPatterns: [...jaysStatsDefaultInternalTransferPatterns]
                 };
             }
 
-            function normaliseJaysStatsEntry(entry = {}) {
+            function normaliseJaysStatsEntry(entry = {}, month = null) {
                 const date = /^\d{4}-\d{2}-\d{2}$/.test(String(entry?.date || "").trim()) ? String(entry.date).trim() : jaysStatsTodayISO();
+                const incomeDefinitions = Array.isArray(month?.customIncomeStreams) ? month.customIncomeStreams : [];
+                const estimateDefinitions = Array.isArray(month?.customEstimateStreams) ? month.customEstimateStreams : [];
                 return {
                     date,
                     ignitionDisbursals: jaysStatsNumber(entry.ignitionDisbursals),
@@ -62407,6 +62487,8 @@
                     expectedCashCollectionSoFar: jaysStatsNumber(entry.expectedCashCollectionSoFar),
                     bankIncomingEstimate: jaysStatsNumber(entry.bankIncomingEstimate),
                     ignitionDisbursalEstimate: jaysStatsNumber(entry.ignitionDisbursalEstimate),
+                    customIncomeValues: jaysStatsNormaliseDynamicValues(entry.customIncomeValues || {}, incomeDefinitions),
+                    customEstimateValues: jaysStatsNormaliseDynamicValues(entry.customEstimateValues || {}, estimateDefinitions),
                     sources: jaysStatsNormaliseSources(entry.sources || {}),
                     notes: String(entry.notes || "").trim(),
                     createdAt: String(entry.createdAt || new Date().toISOString()),
@@ -62418,8 +62500,10 @@
                 const monthKey = /^\d{4}-\d{2}$/.test(String(month?.monthKey || "").trim())
                     ? String(month.monthKey).trim()
                     : currentMonthKey();
+                const customIncomeStreams = jaysStatsNormaliseStreamDefinitions(month?.customIncomeStreams || [], "income");
+                const customEstimateStreams = jaysStatsNormaliseStreamDefinitions(month?.customEstimateStreams || [], "estimate");
                 const entries = Array.isArray(month?.entries)
-                    ? month.entries.map((entry) => normaliseJaysStatsEntry(entry)).sort((left, right) => String(right.date).localeCompare(String(left.date)))
+                    ? month.entries.map((entry) => normaliseJaysStatsEntry(entry, { customIncomeStreams, customEstimateStreams })).sort((left, right) => String(right.date).localeCompare(String(left.date)))
                     : [];
                 const patterns = Array.isArray(month?.internalTransferPatterns)
                     ? month.internalTransferPatterns.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
@@ -62429,6 +62513,8 @@
                     status: month?.status === "closed" ? "closed" : "open",
                     closedAt: String(month?.closedAt || ""),
                     entries,
+                    customIncomeStreams,
+                    customEstimateStreams,
                     internalTransferPatterns: patterns.length ? patterns : [...jaysStatsDefaultInternalTransferPatterns]
                 };
             }
@@ -62499,23 +62585,27 @@
             }
 
             function jaysStatsActualTotal(entry = null) {
+                const customIncome = Object.values(entry?.customIncomeValues || {}).reduce((sum, value) => sum + jaysStatsNumber(value), 0);
                 return jaysStatsNumber(entry?.ignitionDisbursals)
                     + jaysStatsNumber(entry?.stripeIncome)
                     + jaysStatsNumber(entry?.vendingMachineIncome)
                     + jaysStatsNumber(entry?.bankTransfers)
-                    + jaysStatsNumber(entry?.otherIncome);
+                    + jaysStatsNumber(entry?.otherIncome)
+                    + customIncome;
             }
 
             function jaysStatsProjectedTotal(entry = null) {
+                const customEstimates = Object.values(entry?.customEstimateValues || {}).reduce((sum, value) => sum + jaysStatsNumber(value), 0);
                 return jaysStatsActualTotal(entry)
                     + jaysStatsNumber(entry?.bankIncomingEstimate)
-                    + jaysStatsNumber(entry?.ignitionDisbursalEstimate);
+                    + jaysStatsNumber(entry?.ignitionDisbursalEstimate)
+                    + customEstimates;
             }
 
             function updateJaysStatsEntry(monthKey, entryPayload) {
                 const targetMonth = (jaysStatsState.months || []).find((month) => month.monthKey === monthKey);
                 if (!targetMonth || targetMonth.status === "closed") return false;
-                const entry = normaliseJaysStatsEntry(entryPayload);
+                const entry = normaliseJaysStatsEntry(entryPayload, targetMonth);
                 const existingIndex = targetMonth.entries.findIndex((item) => item.date === entry.date);
                 if (existingIndex >= 0) {
                     targetMonth.entries[existingIndex] = { ...targetMonth.entries[existingIndex], ...entry, updatedAt: new Date().toISOString() };
@@ -87188,6 +87278,8 @@
 
             function jaysStatsPrefillFromLatest(month = jaysStatsSelectedMonthOrFallback()) {
                 const latest = jaysStatsLatestEntry(month) || {};
+                const customIncomeValues = jaysStatsNormaliseDynamicValues(latest.customIncomeValues || {}, month?.customIncomeStreams || []);
+                const customEstimateValues = jaysStatsNormaliseDynamicValues(latest.customEstimateValues || {}, month?.customEstimateStreams || []);
                 return {
                     date: jaysStatsTodayISO(),
                     ignitionDisbursals: jaysStatsNumber(latest.ignitionDisbursals),
@@ -87198,9 +87290,112 @@
                     expectedCashCollectionSoFar: jaysStatsNumber(latest.expectedCashCollectionSoFar),
                     bankIncomingEstimate: jaysStatsNumber(latest.bankIncomingEstimate),
                     ignitionDisbursalEstimate: jaysStatsNumber(latest.ignitionDisbursalEstimate),
+                    customIncomeValues,
+                    customEstimateValues,
                     sources: jaysStatsNormaliseSources(latest.sources || {}),
                     notes: ""
                 };
+            }
+
+            function jaysStatsDynamicInputId(type, key) {
+                const safeType = type === "estimate" ? "estimate" : "income";
+                const safeKey = String(key || "").replace(/[^a-z0-9_-]/gi, "");
+                return `jaysStatsCustom${safeType === "estimate" ? "Estimate" : "Income"}-${safeKey}`;
+            }
+
+            function jaysStatsEntryValueByKey(entry, key) {
+                if (!entry || !key) return 0;
+                if (jaysStatsCoreIncomeFields.includes(key) || jaysStatsCoreEstimateFields.includes(key) || key === "expectedCashCollectionSoFar") {
+                    return jaysStatsNumber(entry[key]);
+                }
+                return jaysStatsNumber(entry.customIncomeValues?.[key] ?? entry.customEstimateValues?.[key]);
+            }
+
+            function jaysStatsClosedMonthFinalEntries(currentMonthKey = "") {
+                return (jaysStatsState.months || [])
+                    .filter((month) => month?.status === "closed" && String(month?.monthKey || "") !== String(currentMonthKey || ""))
+                    .map((month) => ({ monthKey: month.monthKey, entry: jaysStatsLatestEntry(month) }))
+                    .filter((item) => item.entry);
+            }
+
+            function jaysStatsAiPopulateEstimates() {
+                const month = jaysStatsSelectedMonthOrFallback();
+                if (!month || month.status === "closed") return;
+                const activeEntry = jaysStatsCollectFormEntry();
+                const day = Math.max(1, Number((activeEntry.date || jaysStatsTodayISO()).slice(-2)));
+                const [yearText, monthText] = String(month.monthKey || currentMonthKey()).split("-");
+                const daysInMonth = new Date(Number(yearText), Number(monthText), 0).getDate() || 30;
+                const closedSamples = jaysStatsClosedMonthFinalEntries(month.monthKey);
+                const averageFinalFor = (metricKey, fallbackCurrent = 0) => {
+                    const totals = closedSamples
+                        .map((sample) => jaysStatsEntryValueByKey(sample.entry, metricKey))
+                        .filter((value) => Number.isFinite(value) && value > 0);
+                    if (totals.length) return totals.reduce((sum, value) => sum + value, 0) / totals.length;
+                    const pace = (jaysStatsNumber(fallbackCurrent) / day) * daysInMonth;
+                    return Number.isFinite(pace) && pace > 0 ? pace : jaysStatsNumber(fallbackCurrent);
+                };
+
+                const estimatedBankFinal = averageFinalFor("bankTransfers", activeEntry.bankTransfers);
+                const estimatedIgnitionFinal = averageFinalFor("ignitionDisbursals", activeEntry.ignitionDisbursals);
+                const suggestedBankIncoming = Math.max(0, estimatedBankFinal - jaysStatsNumber(activeEntry.bankTransfers));
+                const suggestedIgnitionIncoming = Math.max(0, estimatedIgnitionFinal - jaysStatsNumber(activeEntry.ignitionDisbursals));
+                const expectedActualByTodaySamples = closedSamples
+                    .map((sample) => {
+                        const monthDays = new Date(Number(String(sample.monthKey || "").slice(0, 4) || yearText), Number(String(sample.monthKey || "").slice(5, 7) || monthText), 0).getDate() || 30;
+                        const finalActual = jaysStatsActualTotal(sample.entry);
+                        return finalActual * Math.min(1, day / monthDays);
+                    })
+                    .filter((value) => Number.isFinite(value) && value > 0);
+                const expectedByToday = expectedActualByTodaySamples.length
+                    ? expectedActualByTodaySamples.reduce((sum, value) => sum + value, 0) / expectedActualByTodaySamples.length
+                    : jaysStatsActualTotal(activeEntry);
+
+                const bankIncomingInput = document.getElementById("jaysStatsBankIncomingEstimateInput");
+                const ignitionIncomingInput = document.getElementById("jaysStatsIgnitionEstimateInput");
+                const expectedInput = document.getElementById("jaysStatsExpectedCashInput");
+                if (bankIncomingInput) bankIncomingInput.value = suggestedBankIncoming.toFixed(2);
+                if (ignitionIncomingInput) ignitionIncomingInput.value = suggestedIgnitionIncoming.toFixed(2);
+                if (expectedInput) expectedInput.value = expectedByToday.toFixed(2);
+                jaysStatsSetPendingSource("bankIncomingEstimate", "ai-populate");
+                jaysStatsSetPendingSource("ignitionDisbursalEstimate", "ai-populate");
+                jaysStatsSetPendingSource("expectedCashCollectionSoFar", "ai-populate");
+
+                (month.customEstimateStreams || []).forEach((definition) => {
+                    const input = document.getElementById(jaysStatsDynamicInputId("estimate", definition.key));
+                    if (!input) return;
+                    const comparableIncomeKey = (month.customIncomeStreams || []).find((item) => item.key === definition.key)?.key || "";
+                    const currentComparable = comparableIncomeKey ? jaysStatsNumber(activeEntry.customIncomeValues?.[comparableIncomeKey]) : 0;
+                    const estimatedComparableFinal = comparableIncomeKey
+                        ? averageFinalFor(comparableIncomeKey, currentComparable)
+                        : averageFinalFor(definition.key, jaysStatsNumber(activeEntry.customEstimateValues?.[definition.key]));
+                    const suggestion = Math.max(0, estimatedComparableFinal - currentComparable);
+                    input.value = suggestion.toFixed(2);
+                });
+                const sampleCount = closedSamples.length;
+                showToast(sampleCount ? `Jenius AI populated estimate fields from ${sampleCount.toLocaleString("en-GB")} closed month sample(s).` : "Jenius AI populated estimate fields from this month's run-rate.", "success");
+            }
+
+            function addJaysStatsCustomStream(type = "income") {
+                const month = jaysStatsSelectedMonthOrFallback();
+                if (!month || month.status === "closed") return;
+                const kind = type === "estimate" ? "estimate" : "income";
+                const label = window.prompt(kind === "estimate" ? "New estimate stream name" : "New income stream name", "");
+                if (label === null) return;
+                const cleanLabel = String(label || "").trim().replace(/\s+/g, " ").slice(0, 80);
+                if (!cleanLabel) {
+                    showToast("Enter a valid stream name.", "error");
+                    return;
+                }
+                const targetList = kind === "estimate" ? month.customEstimateStreams : month.customIncomeStreams;
+                if ((targetList || []).some((item) => String(item.label || "").toLowerCase() === cleanLabel.toLowerCase())) {
+                    showToast("That stream already exists for this month.", "info");
+                    return;
+                }
+                const next = jaysStatsNormaliseStreamDefinitions([...(targetList || []), { label: cleanLabel }], kind);
+                if (kind === "estimate") month.customEstimateStreams = next;
+                else month.customIncomeStreams = next;
+                persistJaysStatsState();
+                renderJaysStatsScreen();
             }
 
             async function loadJaysStats(options = {}) {
@@ -87252,6 +87447,17 @@
             }
 
             function jaysStatsCollectFormEntry() {
+                const month = jaysStatsSelectedMonthOrFallback();
+                const customIncomeValues = {};
+                const customEstimateValues = {};
+                (month?.customIncomeStreams || []).forEach((definition) => {
+                    const id = jaysStatsDynamicInputId("income", definition.key);
+                    customIncomeValues[definition.key] = document.getElementById(id)?.value;
+                });
+                (month?.customEstimateStreams || []).forEach((definition) => {
+                    const id = jaysStatsDynamicInputId("estimate", definition.key);
+                    customEstimateValues[definition.key] = document.getElementById(id)?.value;
+                });
                 return {
                     date: document.getElementById("jaysStatsDateInput")?.value || jaysStatsTodayISO(),
                     ignitionDisbursals: document.getElementById("jaysStatsIgnitionDisbursalsInput")?.value,
@@ -87262,13 +87468,16 @@
                     expectedCashCollectionSoFar: document.getElementById("jaysStatsExpectedCashInput")?.value,
                     bankIncomingEstimate: document.getElementById("jaysStatsBankIncomingEstimateInput")?.value,
                     ignitionDisbursalEstimate: document.getElementById("jaysStatsIgnitionEstimateInput")?.value,
+                    customIncomeValues,
+                    customEstimateValues,
                     sources: jaysStatsCurrentFormSources(),
                     notes: document.getElementById("jaysStatsNotesInput")?.value || ""
                 };
             }
 
             function jaysStatsPopulateForm(entry = null) {
-                const values = entry ? normaliseJaysStatsEntry(entry) : jaysStatsPrefillFromLatest();
+                const month = jaysStatsSelectedMonthOrFallback();
+                const values = entry ? normaliseJaysStatsEntry(entry, month) : jaysStatsPrefillFromLatest(month);
                 jaysStatsPendingEntrySources = jaysStatsNormaliseSources(values.sources || {});
                 const pairs = [
                     ["jaysStatsDateInput", values.date],
@@ -87287,6 +87496,16 @@
                     if (!input) return;
                     if (input.type === "number") input.value = Number(value || 0).toFixed(2);
                     else input.value = value || "";
+                });
+                (month?.customIncomeStreams || []).forEach((definition) => {
+                    const input = document.getElementById(jaysStatsDynamicInputId("income", definition.key));
+                    if (!input) return;
+                    input.value = jaysStatsNumber(values.customIncomeValues?.[definition.key]).toFixed(2);
+                });
+                (month?.customEstimateStreams || []).forEach((definition) => {
+                    const input = document.getElementById(jaysStatsDynamicInputId("estimate", definition.key));
+                    if (!input) return;
+                    input.value = jaysStatsNumber(values.customEstimateValues?.[definition.key]).toFixed(2);
                 });
                 updateJaysStatsSourceBadgesInForm();
             }
@@ -87421,9 +87640,23 @@
                     .sort((left, right) => String(right.monthKey).localeCompare(String(left.monthKey)))
                     .map((item) => `<option value="${escapeHTML(item.monthKey)}" ${item.monthKey === selectedMonthKey ? "selected" : ""}>${escapeHTML(formatMonthKey(item.monthKey))}${item.status === "closed" ? " (Closed)" : ""}</option>`)
                     .join("");
+                const customIncomeInputMarkup = (month.customIncomeStreams || []).map((definition) => `
+                    <label>
+                        ${escapeHTML(definition.label)} (MTD)
+                        <input id="${escapeHTML(jaysStatsDynamicInputId("income", definition.key))}" type="number" min="0" step="0.01" value="${escapeHTML(jaysStatsNumber(workingEntry.customIncomeValues?.[definition.key]).toFixed(2))}" ${month.status === "closed" ? "disabled" : ""}>
+                    </label>
+                `).join("");
+                const customEstimateInputMarkup = (month.customEstimateStreams || []).map((definition) => `
+                    <label>
+                        ${escapeHTML(definition.label)} estimate
+                        <input id="${escapeHTML(jaysStatsDynamicInputId("estimate", definition.key))}" type="number" min="0" step="0.01" value="${escapeHTML(jaysStatsNumber(workingEntry.customEstimateValues?.[definition.key]).toFixed(2))}" ${month.status === "closed" ? "disabled" : ""}>
+                    </label>
+                `).join("");
                 const rows = (month.entries || []).map((entry) => {
                     const totalActual = jaysStatsActualTotal(entry);
                     const totalProjected = jaysStatsProjectedTotal(entry);
+                    const customIncomeTotal = Object.values(entry.customIncomeValues || {}).reduce((sum, value) => sum + jaysStatsNumber(value), 0);
+                    const customEstimateTotal = Object.values(entry.customEstimateValues || {}).reduce((sum, value) => sum + jaysStatsNumber(value), 0);
                     return `
                         <tr>
                             <td>${escapeHTML(formatDate(entry.date))}</td>
@@ -87432,10 +87665,12 @@
                             <td>${escapeHTML(formatCurrency(entry.vendingMachineIncome))}</td>
                             <td>${escapeHTML(formatCurrency(entry.bankTransfers))}</td>
                             <td>${escapeHTML(formatCurrency(entry.otherIncome))}</td>
+                            <td>${escapeHTML(formatCurrency(customIncomeTotal))}</td>
                             <td>${escapeHTML(formatCurrency(totalActual))}</td>
                             <td>${escapeHTML(formatCurrency(entry.expectedCashCollectionSoFar))}</td>
                             <td>${escapeHTML(formatCurrency(entry.bankIncomingEstimate))}</td>
                             <td>${escapeHTML(formatCurrency(entry.ignitionDisbursalEstimate))}</td>
+                            <td>${escapeHTML(formatCurrency(customEstimateTotal))}</td>
                             <td>${escapeHTML(formatCurrency(totalProjected))}</td>
                             <td>
                                 <button class="ghost-button" type="button" data-jays-edit-entry="${escapeHTML(entry.date)}" ${month.status === "closed" ? "disabled" : ""}>Edit</button>
@@ -87529,6 +87764,23 @@
                                 </span>
                                 <input id="jaysStatsIgnitionEstimateInput" type="number" min="0" step="0.01" value="${escapeHTML(jaysStatsEntryValue(workingEntry, "ignitionDisbursalEstimate"))}" ${month.status === "closed" ? "disabled" : ""}>
                             </label>
+                            <section class="jays-stats-custom-group">
+                                <div class="jays-stats-custom-group-head">
+                                    <strong>Additional income streams</strong>
+                                    <button class="ghost-button" id="jaysStatsAddIncomeStreamButton" type="button" ${month.status === "closed" ? "disabled" : ""}>Add income stream</button>
+                                </div>
+                                <div class="jays-stats-custom-grid">${customIncomeInputMarkup || '<p class="jays-stats-meta-note">No additional income streams yet.</p>'}</div>
+                            </section>
+                            <section class="jays-stats-custom-group">
+                                <div class="jays-stats-custom-group-head">
+                                    <strong>Additional estimate streams</strong>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="jaysStatsAddEstimateStreamButton" type="button" ${month.status === "closed" ? "disabled" : ""}>Add estimate stream</button>
+                                        <button class="ghost-button" id="jaysStatsAiPopulateButton" type="button" ${month.status === "closed" ? "disabled" : ""}>Populate with Jenius AI</button>
+                                    </div>
+                                </div>
+                                <div class="jays-stats-custom-grid">${customEstimateInputMarkup || '<p class="jays-stats-meta-note">No additional estimate streams yet.</p>'}</div>
+                            </section>
                             <label class="jays-stats-wide">
                                 Internal transfer filters (comma separated keywords)
                                 <input id="jaysStatsInternalPatternsInput" type="text" value="${escapeHTML((month.internalTransferPatterns || []).join(", "))}" ${month.status === "closed" ? "disabled" : ""}>
@@ -87554,15 +87806,17 @@
                                         <th>Vending</th>
                                         <th>Bank Transfers</th>
                                         <th>Other</th>
+                                        <th>Custom income</th>
                                         <th>Actual MTD</th>
                                         <th>Expected so far</th>
                                         <th>Bank est.</th>
                                         <th>Ignition est.</th>
+                                        <th>Custom est.</th>
                                         <th>Projected total</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody>${rows || '<tr><td colspan="12">No daily snapshots yet for this month.</td></tr>'}</tbody>
+                                <tbody>${rows || '<tr><td colspan="14">No daily snapshots yet for this month.</td></tr>'}</tbody>
                             </table>
                         </section>
                     </div>
@@ -87617,6 +87871,9 @@
                 });
                 document.getElementById("jaysStatsIgnitionPullButton")?.addEventListener("click", () => pullJaysStatsFromIgnition());
                 document.getElementById("jaysStatsRefreshButton")?.addEventListener("click", () => loadJaysStats());
+                document.getElementById("jaysStatsAddIncomeStreamButton")?.addEventListener("click", () => addJaysStatsCustomStream("income"));
+                document.getElementById("jaysStatsAddEstimateStreamButton")?.addEventListener("click", () => addJaysStatsCustomStream("estimate"));
+                document.getElementById("jaysStatsAiPopulateButton")?.addEventListener("click", () => jaysStatsAiPopulateEstimates());
                 const jaysSourceInputMap = {
                     ignitionDisbursals: "jaysStatsIgnitionDisbursalsInput",
                     stripeIncome: "jaysStatsStripeIncomeInput",
@@ -87629,6 +87886,12 @@
                 };
                 Object.entries(jaysSourceInputMap).forEach(([field, inputId]) => {
                     document.getElementById(inputId)?.addEventListener("input", () => jaysStatsSetPendingSource(field, "manual"));
+                });
+                (month.customEstimateStreams || []).forEach((definition) => {
+                    document.getElementById(jaysStatsDynamicInputId("estimate", definition.key))?.addEventListener("input", () => {
+                        jaysStatsSetPendingSource("bankIncomingEstimate", "manual");
+                        jaysStatsSetPendingSource("ignitionDisbursalEstimate", "manual");
+                    });
                 });
                 updateJaysStatsSourceBadgesInForm();
                 const statementInput = document.getElementById("jaysStatsStatementFileInput");
