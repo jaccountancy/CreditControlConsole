@@ -37239,6 +37239,54 @@
                 font-size: 0.82rem;
                 color: var(--muted);
             }
+            #jaysStatsScreen .jays-stats-view-toggle {
+                display: inline-flex;
+                gap: 6px;
+                padding: 3px;
+                border-radius: 999px;
+                background: #edf3fc;
+                border: 1px solid var(--line);
+            }
+            #jaysStatsScreen .jays-stats-view-toggle button {
+                border: 0;
+                border-radius: 999px;
+                padding: 6px 10px;
+                font-weight: 700;
+                color: #3b4f77;
+                background: transparent;
+            }
+            #jaysStatsScreen .jays-stats-view-toggle button.is-active {
+                background: #fff;
+                color: #1f3d74;
+                box-shadow: 0 1px 2px rgba(31, 61, 116, 0.18);
+            }
+            #jaysStatsScreen .jays-stats-report-controls {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: #fff;
+                padding: 12px;
+                display: grid;
+                gap: 10px;
+            }
+            #jaysStatsScreen .jays-stats-report-control-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 10px;
+            }
+            #jaysStatsScreen .jays-stats-report-control-grid label {
+                display: grid;
+                gap: 6px;
+                font-size: 0.82rem;
+                color: var(--muted);
+            }
+            #jaysStatsScreen .jays-stats-ai-list {
+                margin: 0;
+                padding-left: 18px;
+                display: grid;
+                gap: 6px;
+                color: #2a3f66;
+                font-size: 0.84rem;
+            }
                 </style>
             </head>
             <body>
@@ -49010,6 +49058,19 @@
             let jaysStatsLoading = false;
             let jaysStatsImporting = false;
             let jaysStatsPendingEntrySources = {};
+            let jaysStatsActivePanel = "tracker";
+            let jaysStatsSettingsOpen = false;
+            let jaysStatsReportScope = "month";
+            let jaysStatsReportGroupBy = "week";
+            let jaysStatsReportFrom = "";
+            let jaysStatsReportTo = "";
+            let jaysStatsBudgetWorkspace = { generatedAt: "", coverage: {}, recurringSpendLines: [], suggestedBudgetLines: [], xeroCosts: {}, insights: {}, snapshots: [] };
+            let jaysStatsBudgetLoading = false;
+            let jaysStatsBudgetChatBusy = false;
+            let jaysStatsBudgetDraftLines = [];
+            let jaysStatsBudgetChatHistory = [];
+            let jaysStatsBudgetDraftTitle = "";
+            let jaysStatsBudgetDraftNotes = "";
             const settingsTopbarSummaries = {
                 "data-import": "Choose the invoice data depth for the next Xero import.",
                 "period-scope": "Limit imports to specific invoice years when you need a tighter sync window.",
@@ -50036,6 +50097,9 @@
                         jaysStatsCloseMonth: config.endpoints?.jaysStatsCloseMonth || "/api/jays-stats/close-month",
                         jaysStatsBankCredits: config.endpoints?.jaysStatsBankCredits || "/api/jays-stats/bank-credits",
                         jaysStatsIgnitionDaily: config.endpoints?.jaysStatsIgnitionDaily || "/api/jays-stats/ignition-daily",
+                        jaysStatsBudget: config.endpoints?.jaysStatsBudget || "/api/jays-stats/budget",
+                        jaysStatsBudgetAiChat: config.endpoints?.jaysStatsBudgetAiChat || "/api/jays-stats/budget/ai-chat",
+                        jaysStatsBudgetPublish: config.endpoints?.jaysStatsBudgetPublish || "/api/jays-stats/budget/publish",
                         bankStatements: config.endpoints?.bankStatements || "/api/bank-statements",
                         bankStatementClients: config.endpoints?.bankStatementClients || "/api/bank-statements/clients",
                         bankStatementClient: config.endpoints?.bankStatementClient || "/api/bank-statements/clients/:clientId",
@@ -62462,10 +62526,11 @@
             }
 
             function jaysStatsCreateMonth(monthKey, status = "open") {
+                const cleanStatus = String(status || "").trim().toLowerCase();
                 return {
                     monthKey: /^\d{4}-\d{2}$/.test(String(monthKey || "").trim()) ? String(monthKey).trim() : currentMonthKey(),
-                    status: status === "closed" ? "closed" : "open",
-                    closedAt: status === "closed" ? new Date().toISOString() : "",
+                    status: cleanStatus === "closed" ? "closed" : cleanStatus === "close-period" ? "close-period" : "open",
+                    closedAt: cleanStatus === "closed" ? new Date().toISOString() : "",
                     entries: [],
                     customIncomeStreams: [],
                     customEstimateStreams: [],
@@ -62510,7 +62575,7 @@
                     : [];
                 return {
                     monthKey,
-                    status: month?.status === "closed" ? "closed" : "open",
+                    status: month?.status === "closed" ? "closed" : month?.status === "close-period" ? "close-period" : "open",
                     closedAt: String(month?.closedAt || ""),
                     entries,
                     customIncomeStreams,
@@ -62531,31 +62596,21 @@
                 if (!dedupedMonths.length) {
                     dedupedMonths.push(jaysStatsCreateMonth(todayMonthKey, "open"));
                 }
-                let openMonth = dedupedMonths.find((month) => month.status === "open");
-                if (!openMonth) {
-                    openMonth = jaysStatsCreateMonth(todayMonthKey, "open");
-                    dedupedMonths.push(openMonth);
-                }
-                while (String(openMonth.monthKey).localeCompare(todayMonthKey) < 0) {
-                    openMonth.status = "closed";
-                    if (!openMonth.closedAt) openMonth.closedAt = new Date().toISOString();
-                    const nextKey = jaysStatsNextMonthKey(openMonth.monthKey);
-                    const existing = dedupedMonths.find((month) => month.monthKey === nextKey);
-                    if (existing) {
-                        openMonth = existing;
-                        openMonth.status = "open";
-                        openMonth.closedAt = "";
-                    } else {
-                        openMonth = jaysStatsCreateMonth(nextKey, "open");
-                        dedupedMonths.push(openMonth);
-                    }
-                }
+                const editableMonth = dedupedMonths.find((month) => month.status === "open" || month.status === "close-period");
+                if (!editableMonth) dedupedMonths.push(jaysStatsCreateMonth(todayMonthKey, "open"));
+                const selectedFallback = dedupedMonths.find((month) => month.status === "open" || month.status === "close-period")
+                    || dedupedMonths.find((month) => month.monthKey === todayMonthKey)
+                    || dedupedMonths[dedupedMonths.length - 1];
                 const selectedMonthKey = dedupedMonths.some((month) => month.monthKey === parsed.selectedMonthKey)
                     ? parsed.selectedMonthKey
-                    : openMonth.monthKey;
+                    : String(selectedFallback?.monthKey || todayMonthKey);
+                const settings = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {};
                 return {
                     months: dedupedMonths.sort((left, right) => String(left.monthKey).localeCompare(String(right.monthKey))),
-                    selectedMonthKey
+                    selectedMonthKey,
+                    settings: {
+                        fixedMonthlyCosts: Math.max(0, jaysStatsNumber(settings.fixedMonthlyCosts)),
+                    }
                 };
             }
 
@@ -62600,6 +62655,286 @@
                     + jaysStatsNumber(entry?.bankIncomingEstimate)
                     + jaysStatsNumber(entry?.ignitionDisbursalEstimate)
                     + customEstimates;
+            }
+
+            function jaysStatsMonthDateRange(monthKey = "") {
+                const key = String(monthKey || "").trim();
+                if (!/^\d{4}-\d{2}$/.test(key)) return { from: "", to: "" };
+                const [yearText, monthText] = key.split("-");
+                const year = Number(yearText);
+                const month = Number(monthText);
+                if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return { from: "", to: "" };
+                const from = `${year}-${String(month).padStart(2, "0")}-01`;
+                const to = `${year}-${String(month).padStart(2, "0")}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}`;
+                return { from, to };
+            }
+
+            function jaysStatsIsoFromDateObject(date) {
+                if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, "0");
+                const day = String(date.getDate()).padStart(2, "0");
+                return `${year}-${month}-${day}`;
+            }
+
+            function jaysStatsAllEntriesWithMonth() {
+                return (jaysStatsState.months || []).flatMap((month) => (
+                    (month.entries || []).map((entry) => ({
+                        monthKey: month.monthKey,
+                        status: month.status,
+                        entry,
+                    }))
+                )).sort((left, right) => String(left.entry?.date || "").localeCompare(String(right.entry?.date || "")));
+            }
+
+            function jaysStatsFinancialYearStartISO(referenceDate = "") {
+                const date = new Date(String(referenceDate || jaysStatsTodayISO()));
+                if (Number.isNaN(date.getTime())) return "";
+                const year = date.getMonth() + 1 >= 4 ? date.getFullYear() : date.getFullYear() - 1;
+                return `${year}-04-01`;
+            }
+
+            function jaysStatsScopeRange(month = null) {
+                const selectedDate = String(
+                    document.getElementById("jaysStatsDateInput")?.value
+                    || month?.entries?.[0]?.date
+                    || jaysStatsTodayISO()
+                );
+                const scope = String(jaysStatsReportScope || "month");
+                if (scope === "week") {
+                    const anchor = new Date(`${selectedDate}T00:00:00`);
+                    if (!Number.isNaN(anchor.getTime())) {
+                        const dayIndex = (anchor.getDay() + 6) % 7;
+                        const weekStart = new Date(anchor);
+                        weekStart.setDate(anchor.getDate() - dayIndex);
+                        const weekEnd = new Date(weekStart);
+                        weekEnd.setDate(weekStart.getDate() + 6);
+                        return { from: jaysStatsIsoFromDateObject(weekStart), to: jaysStatsIsoFromDateObject(weekEnd), label: "Selected week" };
+                    }
+                }
+                if (scope === "custom") {
+                    const from = String(jaysStatsReportFrom || "").trim();
+                    const to = String(jaysStatsReportTo || "").trim();
+                    return { from, to, label: "Custom range" };
+                }
+                if (scope === "financial-year") {
+                    const fyStart = jaysStatsFinancialYearStartISO(selectedDate);
+                    return { from: fyStart, to: selectedDate, label: "Financial year to date" };
+                }
+                const monthRange = jaysStatsMonthDateRange(month?.monthKey || "");
+                return { ...monthRange, label: "Selected month" };
+            }
+
+            function jaysStatsEntriesInRange(fromISO = "", toISO = "") {
+                const from = String(fromISO || "").trim();
+                const to = String(toISO || "").trim();
+                return jaysStatsAllEntriesWithMonth().filter(({ entry }) => {
+                    const date = String(entry?.date || "");
+                    if (!date) return false;
+                    if (from && date < from) return false;
+                    if (to && date > to) return false;
+                    return true;
+                });
+            }
+
+            function jaysStatsScopeAggregate(entriesWithMonth = []) {
+                if (!entriesWithMonth.length) {
+                    return {
+                        totalActual: 0,
+                        totalProjected: 0,
+                        latestExpected: 0,
+                        averageActualPerMonth: 0,
+                        monthsCovered: 0,
+                    };
+                }
+                const monthMap = new Map();
+                entriesWithMonth.forEach(({ monthKey, entry }) => {
+                    monthMap.set(monthKey, entry);
+                });
+                const monthEntries = [...monthMap.values()];
+                const totalActual = monthEntries.reduce((sum, entry) => sum + jaysStatsActualTotal(entry), 0);
+                const totalProjected = monthEntries.reduce((sum, entry) => sum + jaysStatsProjectedTotal(entry), 0);
+                const latestByDate = [...entriesWithMonth].sort((left, right) => String(right.entry?.date || "").localeCompare(String(left.entry?.date || "")))[0]?.entry || null;
+                const latestExpected = jaysStatsNumber(latestByDate?.expectedCashCollectionSoFar);
+                const monthsCovered = monthEntries.length;
+                return {
+                    totalActual,
+                    totalProjected,
+                    latestExpected,
+                    averageActualPerMonth: monthsCovered ? (totalActual / monthsCovered) : 0,
+                    monthsCovered,
+                };
+            }
+
+            function jaysStatsGroupLabel(isoDate = "", groupBy = "week") {
+                const date = new Date(`${String(isoDate || "").trim()}T00:00:00`);
+                if (Number.isNaN(date.getTime())) return "--";
+                if (groupBy === "month") return currentMonthKey(date);
+                if (groupBy === "day") return jaysStatsIsoFromDateObject(date);
+                const start = new Date(date);
+                const dayIndex = (date.getDay() + 6) % 7;
+                start.setDate(date.getDate() - dayIndex);
+                return `W/C ${formatDate(jaysStatsIsoFromDateObject(start))}`;
+            }
+
+            function jaysStatsGroupedRows(entriesWithMonth = [], groupBy = "week") {
+                const rows = new Map();
+                entriesWithMonth.forEach(({ entry }) => {
+                    const label = jaysStatsGroupLabel(entry?.date, groupBy);
+                    if (!rows.has(label)) {
+                        rows.set(label, { label, actual: 0, projected: 0, expected: 0, count: 0 });
+                    }
+                    const row = rows.get(label);
+                    row.actual += jaysStatsActualTotal(entry);
+                    row.projected += jaysStatsProjectedTotal(entry);
+                    row.expected = jaysStatsNumber(entry?.expectedCashCollectionSoFar);
+                    row.count += 1;
+                });
+                return [...rows.values()];
+            }
+
+            function jaysStatsBudgetTotal(lines = []) {
+                return (Array.isArray(lines) ? lines : []).reduce((sum, line) => sum + jaysStatsNumber(line?.monthlyAmount), 0);
+            }
+
+            function jaysStatsNormaliseBudgetDraftLines(lines = []) {
+                const source = Array.isArray(lines) ? lines : [];
+                const output = [];
+                source.forEach((line, index) => {
+                    const label = String(line?.label || "").trim().replace(/\s+/g, " ").slice(0, 120);
+                    if (!label) return;
+                    output.push({
+                        id: String(line?.id || `budget-line-${index + 1}`),
+                        label,
+                        monthlyAmount: Math.max(0, jaysStatsNumber(line?.monthlyAmount)),
+                        source: String(line?.source || "manual").trim() || "manual",
+                    });
+                });
+                return output;
+            }
+
+            async function loadJaysStatsBudget(force = false) {
+                if (jaysStatsBudgetLoading && !force) return;
+                jaysStatsBudgetLoading = true;
+                renderJaysStatsScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.jaysStatsBudget, {
+                        suppressFailurePanel: true,
+                        timeoutMs: 18000,
+                    });
+                    jaysStatsBudgetWorkspace = payload?.budget && typeof payload.budget === "object" ? payload.budget : { generatedAt: "", coverage: {}, recurringSpendLines: [], suggestedBudgetLines: [], xeroCosts: {}, insights: {}, snapshots: [] };
+                    if (!jaysStatsBudgetDraftLines.length) {
+                        jaysStatsBudgetDraftLines = jaysStatsNormaliseBudgetDraftLines(jaysStatsBudgetWorkspace.suggestedBudgetLines || []);
+                    }
+                    if (!jaysStatsBudgetDraftTitle.trim()) {
+                        const month = jaysStatsSelectedMonthOrFallback();
+                        const monthKey = month?.monthKey || currentMonthKey();
+                        jaysStatsBudgetDraftTitle = `Budget ${formatMonthKey(monthKey)}`;
+                    }
+                } catch (error) {
+                    showToast(error?.message || "Unable to load Budget AI workspace.", "error");
+                } finally {
+                    jaysStatsBudgetLoading = false;
+                    renderJaysStatsScreen();
+                }
+            }
+
+            async function jaysStatsBudgetAskAi() {
+                const input = document.getElementById("jaysStatsBudgetChatInput");
+                const message = String(input?.value || "").trim();
+                if (!message || jaysStatsBudgetChatBusy) return;
+                jaysStatsBudgetChatBusy = true;
+                jaysStatsBudgetChatHistory.push({ role: "user", message, createdAt: new Date().toISOString() });
+                if (input) input.value = "";
+                renderJaysStatsScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.jaysStatsBudgetAiChat, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            message,
+                            budgetLines: jaysStatsBudgetDraftLines,
+                            chatHistory: jaysStatsBudgetChatHistory,
+                        }),
+                    });
+                    const reply = String(payload?.reply || "Jenius AI could not produce a response.");
+                    jaysStatsBudgetChatHistory.push({
+                        role: "assistant",
+                        message: reply,
+                        tips: Array.isArray(payload?.tips) ? payload.tips : [],
+                        edits: Array.isArray(payload?.edits) ? payload.edits : [],
+                        createdAt: new Date().toISOString(),
+                    });
+                    const edits = Array.isArray(payload?.edits) ? payload.edits : [];
+                    if (edits.length) {
+                        const byLabel = new Map(jaysStatsBudgetDraftLines.map((line) => [String(line.label || "").toLowerCase(), line]));
+                        edits.forEach((edit) => {
+                            const action = String(edit?.action || "set").toLowerCase();
+                            const label = String(edit?.label || "").trim();
+                            if (!label) return;
+                            const key = label.toLowerCase();
+                            const amount = Math.max(0, jaysStatsNumber(edit?.monthlyAmount));
+                            if (action === "remove") {
+                                jaysStatsBudgetDraftLines = jaysStatsBudgetDraftLines.filter((line) => String(line.label || "").toLowerCase() !== key);
+                                byLabel.delete(key);
+                                return;
+                            }
+                            if (byLabel.has(key)) {
+                                const line = byLabel.get(key);
+                                line.monthlyAmount = amount;
+                                line.source = "ai";
+                                return;
+                            }
+                            if (action === "add" || action === "set") {
+                                const added = { id: `budget-line-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, label, monthlyAmount: amount, source: "ai" };
+                                jaysStatsBudgetDraftLines.push(added);
+                                byLabel.set(key, added);
+                            }
+                        });
+                    }
+                    if (payload?.workspace && typeof payload.workspace === "object") {
+                        jaysStatsBudgetWorkspace = payload.workspace;
+                    }
+                    const titleSuggestion = String(payload?.titleSuggestion || "").trim();
+                    if (titleSuggestion && !jaysStatsBudgetDraftTitle.trim()) {
+                        jaysStatsBudgetDraftTitle = titleSuggestion;
+                    }
+                } catch (error) {
+                    jaysStatsBudgetChatHistory.push({ role: "assistant", message: error?.message || "Unable to ask Jenius AI right now.", createdAt: new Date().toISOString() });
+                } finally {
+                    jaysStatsBudgetChatBusy = false;
+                    renderJaysStatsScreen();
+                }
+            }
+
+            async function jaysStatsBudgetPublishSnapshot() {
+                const titleInput = document.getElementById("jaysStatsBudgetTitleInput");
+                const notesInput = document.getElementById("jaysStatsBudgetNotesInput");
+                const title = String(titleInput?.value || "").trim();
+                if (!title) {
+                    showToast("Add a snapshot title before publishing.", "error");
+                    return;
+                }
+                try {
+                    const payload = await requestJSON(api.endpoints.jaysStatsBudgetPublish, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            title,
+                            notes: String(notesInput?.value || ""),
+                            budgetLines: jaysStatsBudgetDraftLines,
+                            chatHistory: jaysStatsBudgetChatHistory,
+                        }),
+                    });
+                    const workspace = payload?.workspace;
+                    if (workspace && typeof workspace === "object") {
+                        jaysStatsBudgetWorkspace = workspace;
+                    }
+                    jaysStatsBudgetDraftTitle = title;
+                    jaysStatsBudgetDraftNotes = String(notesInput?.value || "");
+                    showToast("Budget snapshot published.", "success");
+                    renderJaysStatsScreen();
+                } catch (error) {
+                    showToast(error?.message || "Unable to publish budget snapshot.", "error");
+                }
             }
 
             function updateJaysStatsEntry(monthKey, entryPayload) {
@@ -87633,12 +87968,12 @@
                 const projectedTotal = jaysStatsProjectedTotal(workingEntry);
                 const expectedTotal = jaysStatsNumber(workingEntry.expectedCashCollectionSoFar);
                 const variance = projectedTotal - expectedTotal;
-                const statusClass = month.status === "closed" ? "is-closed" : "is-open";
-                const statusText = month.status === "closed" ? "Closed month" : "Open month";
+                const statusClass = month.status === "closed" ? "is-closed" : month.status === "close-period" ? "is-close-period" : "is-open";
+                const statusText = month.status === "closed" ? "Closed month" : month.status === "close-period" ? "Close period" : "Open month";
                 const monthOptions = (jaysStatsState.months || [])
                     .slice()
                     .sort((left, right) => String(right.monthKey).localeCompare(String(left.monthKey)))
-                    .map((item) => `<option value="${escapeHTML(item.monthKey)}" ${item.monthKey === selectedMonthKey ? "selected" : ""}>${escapeHTML(formatMonthKey(item.monthKey))}${item.status === "closed" ? " (Closed)" : ""}</option>`)
+                    .map((item) => `<option value="${escapeHTML(item.monthKey)}" ${item.monthKey === selectedMonthKey ? "selected" : ""}>${escapeHTML(formatMonthKey(item.monthKey))}${item.status === "closed" ? " (Closed)" : item.status === "close-period" ? " (Close period)" : ""}</option>`)
                     .join("");
                 const customIncomeInputMarkup = (month.customIncomeStreams || []).map((definition) => `
                     <label>
@@ -87679,6 +88014,78 @@
                         </tr>
                     `;
                 }).join("");
+                const scopeRange = jaysStatsScopeRange(month);
+                const invalidCustomRange = jaysStatsReportScope === "custom"
+                    && scopeRange.from
+                    && scopeRange.to
+                    && scopeRange.from > scopeRange.to;
+                const reportRowsSource = !invalidCustomRange && scopeRange.from && scopeRange.to
+                    ? jaysStatsEntriesInRange(scopeRange.from, scopeRange.to)
+                    : [];
+                const reportAggregate = jaysStatsScopeAggregate(reportRowsSource);
+                const groupedRows = jaysStatsGroupedRows(reportRowsSource, jaysStatsReportGroupBy);
+                const fixedMonthlyCosts = Math.max(0, jaysStatsNumber(jaysStatsState?.settings?.fixedMonthlyCosts));
+                const fixedCostsForCoveredMonths = fixedMonthlyCosts * Math.max(0, reportAggregate.monthsCovered || 0);
+                const reportInsights = [];
+                if ((reportAggregate.monthsCovered || 0) <= 1) {
+                    reportInsights.push("Psst: only one month of cash collection data is currently available. Adding Jan 2026 to Jul 2026 would materially improve projections.");
+                }
+                reportInsights.push(
+                    `Average cash collection in this range: ${formatCurrency(reportAggregate.averageActualPerMonth)} per month across ${(reportAggregate.monthsCovered || 0).toLocaleString("en-GB")} month${reportAggregate.monthsCovered === 1 ? "" : "s"}.`
+                );
+                if (fixedMonthlyCosts > 0) {
+                    const headroom = reportAggregate.averageActualPerMonth - fixedMonthlyCosts;
+                    reportInsights.push(
+                        `Estimated fixed costs baseline: ${formatCurrency(fixedMonthlyCosts)} per month. Estimated monthly headroom: ${formatCurrency(headroom)}.`
+                    );
+                    const projectionHeadroom = reportAggregate.totalProjected - fixedCostsForCoveredMonths;
+                    reportInsights.push(
+                        `Projected headroom for selected range: ${formatCurrency(projectionHeadroom)} (${formatCurrency(reportAggregate.totalProjected)} projected inflow minus ${formatCurrency(fixedCostsForCoveredMonths)} fixed costs).`
+                    );
+                } else {
+                    reportInsights.push("Set monthly fixed costs in settings to compare cash collection against Profit & Loss-style overhead benchmarks.");
+                }
+                const reportRowsMarkup = groupedRows.map((row) => `
+                    <tr>
+                        <td>${escapeHTML(row.label)}</td>
+                        <td>${escapeHTML(formatCurrency(row.actual))}</td>
+                        <td>${escapeHTML(formatCurrency(row.expected))}</td>
+                        <td>${escapeHTML(formatCurrency(row.projected))}</td>
+                        <td>${escapeHTML(String(row.count || 0))}</td>
+                    </tr>
+                `).join("");
+                const budgetCoverage = jaysStatsBudgetWorkspace?.coverage || {};
+                const budgetSnapshots = Array.isArray(jaysStatsBudgetWorkspace?.snapshots) ? jaysStatsBudgetWorkspace.snapshots : [];
+                const budgetXeroCosts = jaysStatsBudgetWorkspace?.xeroCosts || {};
+                if (!jaysStatsBudgetDraftLines.length && Array.isArray(jaysStatsBudgetWorkspace?.suggestedBudgetLines)) {
+                    jaysStatsBudgetDraftLines = jaysStatsNormaliseBudgetDraftLines(jaysStatsBudgetWorkspace.suggestedBudgetLines);
+                }
+                const budgetDraftLines = jaysStatsNormaliseBudgetDraftLines(jaysStatsBudgetDraftLines);
+                if (!jaysStatsBudgetDraftTitle.trim()) {
+                    jaysStatsBudgetDraftTitle = `Budget ${formatMonthKey(selectedMonthKey)}`;
+                }
+                const budgetLineRows = budgetDraftLines.map((line, index) => `
+                    <tr>
+                        <td><input type="text" data-jays-budget-label="${index}" value="${escapeHTML(line.label)}"></td>
+                        <td><input type="number" min="0" step="0.01" data-jays-budget-amount="${index}" value="${escapeHTML(jaysStatsNumber(line.monthlyAmount).toFixed(2))}"></td>
+                        <td><span class="jays-stats-source-badge">${escapeHTML(line.source || "manual")}</span></td>
+                        <td><button class="ghost-button danger-button" type="button" data-jays-budget-delete="${index}">Remove</button></td>
+                    </tr>
+                `).join("");
+                const budgetChatRows = (jaysStatsBudgetChatHistory || []).slice(-16).map((item) => `
+                    <div class="jays-stats-settings-panel">
+                        <p class="eyebrow">${item.role === "assistant" ? "Jenius AI" : "You"}</p>
+                        <p class="jays-stats-meta-note">${escapeHTML(String(item.message || ""))}</p>
+                    </div>
+                `).join("");
+                const budgetSnapshotRows = budgetSnapshots.map((snapshot) => `
+                    <tr>
+                        <td>${escapeHTML(snapshot.title || "Budget snapshot")}</td>
+                        <td>${escapeHTML(formatDateTime(snapshot.createdAt))}</td>
+                        <td>${escapeHTML(formatCurrency(snapshot.totalMonthlyBudget || 0))}</td>
+                        <td>${escapeHTML(String(snapshot.lineCount || 0))}</td>
+                    </tr>
+                `).join("");
                 panel.innerHTML = `
                     <div class="jays-stats-shell">
                         <header class="jays-stats-topbar">
@@ -87688,6 +88095,10 @@
                                 <p class="detail-meta">Capture daily MTD cash collection snapshots, update expected and estimated incoming amounts, and lock each month at close.</p>
                             </div>
                             <div class="jays-stats-controls">
+                                <div class="jays-stats-view-toggle" role="tablist" aria-label="Jays Stats views">
+                                    <button class="${jaysStatsActivePanel === "tracker" ? "is-active" : ""}" id="jaysStatsTrackerViewButton" type="button">Tracker</button>
+                                    <button class="${jaysStatsActivePanel === "reports" ? "is-active" : ""}" id="jaysStatsReportsViewButton" type="button">Reports</button>
+                                </div>
                                 <span class="jays-stats-month-status ${statusClass}">${statusText}</span>
                                 <label>
                                     <span class="sr-only">Month</span>
@@ -87695,14 +88106,146 @@
                                 </label>
                                 <button class="ghost-button" id="jaysStatsNewMonthButton" type="button">Create next month</button>
                                 <button class="primary-button" id="jaysStatsCloseMonthButton" type="button" ${month.status === "closed" ? "disabled" : ""}>Close month</button>
+                                <button class="ghost-button" id="jaysStatsSettingsToggleButton" type="button">Settings</button>
                             </div>
                         </header>
+                        <section class="jays-stats-settings-panel" id="jaysStatsSettingsPanel" ${jaysStatsSettingsOpen ? "" : "hidden"}>
+                            <div class="jays-stats-settings-grid">
+                                <label>
+                                    Month status
+                                    <select id="jaysStatsMonthStatusSelect">
+                                        <option value="open" ${month.status === "open" ? "selected" : ""}>Open</option>
+                                        <option value="close-period" ${month.status === "close-period" ? "selected" : ""}>Close period</option>
+                                        <option value="closed" ${month.status === "closed" ? "selected" : ""}>Closed</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    Add month (YYYY-MM)
+                                    <input id="jaysStatsAddMonthInput" type="text" placeholder="2026-07">
+                                </label>
+                                <label>
+                                    Average fixed costs per month (GBP)
+                                    <input id="jaysStatsFixedCostsInput" type="number" min="0" step="0.01" value="${escapeHTML(fixedMonthlyCosts.toFixed(2))}">
+                                </label>
+                            </div>
+                            <div class="detail-actions">
+                                <button class="ghost-button" id="jaysStatsAddSpecificMonthButton" type="button">Add/select month</button>
+                                <button class="primary-button" id="jaysStatsSaveSettingsButton" type="button">Save settings</button>
+                            </div>
+                        </section>
                         <section class="jays-stats-summary-grid">
                             <article><span>Month-to-date actuals</span><strong>${escapeHTML(formatCurrency(actualTotal))}</strong></article>
                             <article><span>Expected cash collection so far</span><strong>${escapeHTML(formatCurrency(expectedTotal))}</strong></article>
                             <article><span>Projected month-end collection</span><strong>${escapeHTML(formatCurrency(projectedTotal))}</strong></article>
                             <article><span>Variance vs expected</span><strong>${escapeHTML(`${variance >= 0 ? "+" : ""}${formatCurrency(variance)}`)}</strong></article>
                         </section>
+                        ${jaysStatsActivePanel === "reports" ? `
+                            <section class="jays-stats-report-controls">
+                                <div class="jays-stats-report-control-grid">
+                                    <label>
+                                        Range
+                                        <select id="jaysStatsReportScopeSelect">
+                                            <option value="month" ${jaysStatsReportScope === "month" ? "selected" : ""}>Selected month</option>
+                                            <option value="week" ${jaysStatsReportScope === "week" ? "selected" : ""}>Selected week</option>
+                                            <option value="financial-year" ${jaysStatsReportScope === "financial-year" ? "selected" : ""}>Financial year to date</option>
+                                            <option value="custom" ${jaysStatsReportScope === "custom" ? "selected" : ""}>Custom date range</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        Group by
+                                        <select id="jaysStatsReportGroupBySelect">
+                                            <option value="week" ${jaysStatsReportGroupBy === "week" ? "selected" : ""}>Week</option>
+                                            <option value="month" ${jaysStatsReportGroupBy === "month" ? "selected" : ""}>Month</option>
+                                            <option value="day" ${jaysStatsReportGroupBy === "day" ? "selected" : ""}>Day</option>
+                                        </select>
+                                    </label>
+                                    <label ${jaysStatsReportScope === "custom" ? "" : "hidden"}>
+                                        From
+                                        <input id="jaysStatsReportFromInput" type="date" value="${escapeHTML(jaysStatsReportFrom || "")}">
+                                    </label>
+                                    <label ${jaysStatsReportScope === "custom" ? "" : "hidden"}>
+                                        To
+                                        <input id="jaysStatsReportToInput" type="date" value="${escapeHTML(jaysStatsReportTo || "")}">
+                                    </label>
+                                </div>
+                                <p class="jays-stats-meta-note">${invalidCustomRange
+                                    ? "Custom date range is invalid. Set From earlier than To."
+                                    : `${escapeHTML(scopeRange.label)}: ${escapeHTML(scopeRange.from || "--")} to ${escapeHTML(scopeRange.to || "--")}`}</p>
+                                <section class="jays-stats-summary-grid">
+                                    <article><span>Cash collected</span><strong>${escapeHTML(formatCurrency(reportAggregate.totalActual))}</strong></article>
+                                    <article><span>Projected cash</span><strong>${escapeHTML(formatCurrency(reportAggregate.totalProjected))}</strong></article>
+                                    <article><span>Average monthly collection</span><strong>${escapeHTML(formatCurrency(reportAggregate.averageActualPerMonth))}</strong></article>
+                                    <article><span>Fixed cost baseline</span><strong>${escapeHTML(formatCurrency(fixedCostsForCoveredMonths))}</strong></article>
+                                </section>
+                                <section class="jays-stats-table-wrap">
+                                    <table class="jays-stats-table">
+                                        <thead>
+                                            <tr>
+                                                <th>${jaysStatsReportGroupBy === "day" ? "Day" : jaysStatsReportGroupBy === "month" ? "Month" : "Week"}</th>
+                                                <th>Cash collected</th>
+                                                <th>Expected so far</th>
+                                                <th>Projected</th>
+                                                <th>Snapshots</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>${reportRowsMarkup || '<tr><td colspan="5">No snapshots in this date range yet.</td></tr>'}</tbody>
+                                    </table>
+                                </section>
+                                <section class="jays-stats-settings-panel">
+                                    <p class="eyebrow">AI insights</p>
+                                    <ul class="jays-stats-ai-list">${reportInsights.map((line) => `<li>${escapeHTML(line)}</li>`).join("")}</ul>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="jaysStatsOpenUploadWizardButton" type="button">Upload missing months</button>
+                                        <button class="ghost-button" id="jaysStatsAiPopulateButton" type="button" ${month.status === "closed" ? "disabled" : ""}>Populate with Jenius AI</button>
+                                    </div>
+                                </section>
+                                <section class="jays-stats-settings-panel">
+                                    <p class="eyebrow">Budget AI</p>
+                                    <h4>Jaccountancy rolling budget</h4>
+                                    <p class="jays-stats-meta-note">Recurring spend from bank uploads: ${escapeHTML(formatCurrency(budgetCoverage.averageMonthlySpend || 0))} per month across ${escapeHTML(String(budgetCoverage.monthCount || 0))} month(s). Xero P&amp;L average costs: ${escapeHTML(formatCurrency(budgetXeroCosts.averageMonthlyCosts || 0))}.</p>
+                                    <div class="jays-stats-report-control-grid">
+                                        <label>
+                                            Snapshot title
+                                            <input id="jaysStatsBudgetTitleInput" type="text" value="${escapeHTML(jaysStatsBudgetDraftTitle)}">
+                                        </label>
+                                        <label>
+                                            Notes
+                                            <input id="jaysStatsBudgetNotesInput" type="text" placeholder="Context for this published budget snapshot" value="${escapeHTML(jaysStatsBudgetDraftNotes)}">
+                                        </label>
+                                    </div>
+                                    <section class="jays-stats-table-wrap">
+                                        <table class="jays-stats-table">
+                                            <thead>
+                                                <tr><th>Cost line</th><th>Monthly amount</th><th>Source</th><th>Actions</th></tr>
+                                            </thead>
+                                            <tbody>${budgetLineRows || '<tr><td colspan="4">No budget lines yet. Ask Jenius AI to draft from your uploaded statements.</td></tr>'}</tbody>
+                                        </table>
+                                    </section>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="jaysStatsBudgetAddLineButton" type="button">Add line</button>
+                                        <button class="ghost-button" id="jaysStatsBudgetReloadButton" type="button" ${jaysStatsBudgetLoading ? "disabled" : ""}>${jaysStatsBudgetLoading ? "Loading..." : "Refresh budget data"}</button>
+                                        <button class="primary-button" id="jaysStatsBudgetPublishButton" type="button">Publish snapshot</button>
+                                    </div>
+                                    <div class="jays-stats-report-control-grid">
+                                        <label class="jays-stats-wide">
+                                            Ask Jenius AI
+                                            <input id="jaysStatsBudgetChatInput" type="text" placeholder="e.g. Update Xero to latest average and add 10% contingency">
+                                        </label>
+                                        <div class="detail-actions">
+                                            <button class="primary-button" id="jaysStatsBudgetAskAiButton" type="button" ${jaysStatsBudgetChatBusy ? "disabled" : ""}>${jaysStatsBudgetChatBusy ? "Thinking..." : "Ask Jenius AI"}</button>
+                                        </div>
+                                    </div>
+                                    ${budgetChatRows || '<p class="jays-stats-meta-note">No chat yet. Ask Jenius AI to refine this budget.</p>'}
+                                    <h4>Published snapshots</h4>
+                                    <section class="jays-stats-table-wrap">
+                                        <table class="jays-stats-table">
+                                            <thead><tr><th>Title</th><th>Published</th><th>Monthly total</th><th>Lines</th></tr></thead>
+                                            <tbody>${budgetSnapshotRows || '<tr><td colspan="4">No published budget snapshots yet.</td></tr>'}</tbody>
+                                        </table>
+                                    </section>
+                                </section>
+                            </section>
+                        ` : `
                         <form id="jaysStatsEntryForm" class="jays-stats-input-grid">
                             <label>
                                 Date
@@ -87819,20 +88362,92 @@
                                 <tbody>${rows || '<tr><td colspan="14">No daily snapshots yet for this month.</td></tr>'}</tbody>
                             </table>
                         </section>
+                        `}
                     </div>
                 `;
 
                 const monthSelect = document.getElementById("jaysStatsMonthSelect");
-                if (monthSelect && monthSelect.dataset.wired !== "true") {
-                    monthSelect.dataset.wired = "true";
-                    monthSelect.addEventListener("change", (event) => {
-                        jaysStatsState.selectedMonthKey = String(event.target.value || "");
-                        jaysStatsState = normaliseJaysStatsState(jaysStatsState);
-                        persistJaysStatsState();
-                        jaysStatsPendingEntrySources = {};
-                        renderJaysStatsScreen();
-                    });
-                }
+                monthSelect?.addEventListener("change", (event) => {
+                    jaysStatsState.selectedMonthKey = String(event.target.value || "");
+                    jaysStatsState = normaliseJaysStatsState(jaysStatsState);
+                    persistJaysStatsState();
+                    jaysStatsPendingEntrySources = {};
+                    renderJaysStatsScreen();
+                });
+                document.getElementById("jaysStatsTrackerViewButton")?.addEventListener("click", () => {
+                    jaysStatsActivePanel = "tracker";
+                    renderJaysStatsScreen();
+                });
+                document.getElementById("jaysStatsReportsViewButton")?.addEventListener("click", () => {
+                    jaysStatsActivePanel = "reports";
+                    renderJaysStatsScreen();
+                    if (!Array.isArray(jaysStatsBudgetWorkspace?.snapshots) || (!jaysStatsBudgetWorkspace.generatedAt && !jaysStatsBudgetWorkspace.snapshots.length)) {
+                        loadJaysStatsBudget();
+                    }
+                });
+                document.getElementById("jaysStatsSettingsToggleButton")?.addEventListener("click", () => {
+                    jaysStatsSettingsOpen = !jaysStatsSettingsOpen;
+                    renderJaysStatsScreen();
+                });
+                document.getElementById("jaysStatsSaveSettingsButton")?.addEventListener("click", () => {
+                    const fixedCostsInput = document.getElementById("jaysStatsFixedCostsInput");
+                    const fixedCosts = Math.max(0, jaysStatsNumber(fixedCostsInput?.value));
+                    jaysStatsState.settings = { ...(jaysStatsState.settings || {}), fixedMonthlyCosts: fixedCosts };
+                    persistJaysStatsState();
+                    showToast("Jays Stats settings saved.", "success");
+                    renderJaysStatsScreen();
+                });
+                document.getElementById("jaysStatsAddSpecificMonthButton")?.addEventListener("click", () => {
+                    const typed = String(document.getElementById("jaysStatsAddMonthInput")?.value || "").trim();
+                    const monthKey = /^\d{4}-\d{2}$/.test(typed) ? typed : "";
+                    if (!monthKey) {
+                        showToast("Enter month as YYYY-MM (example 2026-07).", "error");
+                        return;
+                    }
+                    if (!(jaysStatsState.months || []).some((item) => item.monthKey === monthKey)) {
+                        jaysStatsState.months.push(jaysStatsCreateMonth(monthKey, "open"));
+                    }
+                    jaysStatsState.selectedMonthKey = monthKey;
+                    jaysStatsState = normaliseJaysStatsState(jaysStatsState);
+                    persistJaysStatsState();
+                    renderJaysStatsScreen();
+                });
+                document.getElementById("jaysStatsMonthStatusSelect")?.addEventListener("change", async (event) => {
+                    const nextStatus = String(event.target.value || "open");
+                    if (nextStatus === "closed") {
+                        await closeJaysStatsMonth();
+                        return;
+                    }
+                    month.status = nextStatus === "close-period" ? "close-period" : "open";
+                    month.closedAt = "";
+                    persistJaysStatsState();
+                    renderJaysStatsScreen();
+                });
+                document.getElementById("jaysStatsReportScopeSelect")?.addEventListener("change", (event) => {
+                    jaysStatsReportScope = String(event.target.value || "month");
+                    if (jaysStatsReportScope === "custom" && (!jaysStatsReportFrom || !jaysStatsReportTo)) {
+                        const monthRange = jaysStatsMonthDateRange(month.monthKey);
+                        jaysStatsReportFrom = monthRange.from;
+                        jaysStatsReportTo = monthRange.to;
+                    }
+                    renderJaysStatsScreen();
+                });
+                document.getElementById("jaysStatsReportGroupBySelect")?.addEventListener("change", (event) => {
+                    jaysStatsReportGroupBy = String(event.target.value || "week");
+                    renderJaysStatsScreen();
+                });
+                document.getElementById("jaysStatsReportFromInput")?.addEventListener("change", (event) => {
+                    jaysStatsReportFrom = String(event.target.value || "");
+                    renderJaysStatsScreen();
+                });
+                document.getElementById("jaysStatsReportToInput")?.addEventListener("change", (event) => {
+                    jaysStatsReportTo = String(event.target.value || "");
+                    renderJaysStatsScreen();
+                });
+                document.getElementById("jaysStatsOpenUploadWizardButton")?.addEventListener("click", () => {
+                    navigateApp("bank-statements");
+                    showToast("Use the bank statement upload wizard to fill missing months.", "info");
+                });
                 document.getElementById("jaysStatsEntryForm")?.addEventListener("submit", (event) => {
                     event.preventDefault();
                     const activeMonth = jaysStatsSelectedMonthOrFallback();
@@ -87874,6 +88489,54 @@
                 document.getElementById("jaysStatsAddIncomeStreamButton")?.addEventListener("click", () => addJaysStatsCustomStream("income"));
                 document.getElementById("jaysStatsAddEstimateStreamButton")?.addEventListener("click", () => addJaysStatsCustomStream("estimate"));
                 document.getElementById("jaysStatsAiPopulateButton")?.addEventListener("click", () => jaysStatsAiPopulateEstimates());
+                document.getElementById("jaysStatsBudgetAddLineButton")?.addEventListener("click", () => {
+                    jaysStatsBudgetDraftLines.push({
+                        id: `budget-line-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                        label: "New budget line",
+                        monthlyAmount: 0,
+                        source: "manual",
+                    });
+                    renderJaysStatsScreen();
+                });
+                document.getElementById("jaysStatsBudgetReloadButton")?.addEventListener("click", () => loadJaysStatsBudget(true));
+                document.getElementById("jaysStatsBudgetPublishButton")?.addEventListener("click", () => jaysStatsBudgetPublishSnapshot());
+                document.getElementById("jaysStatsBudgetAskAiButton")?.addEventListener("click", () => jaysStatsBudgetAskAi());
+                document.getElementById("jaysStatsBudgetChatInput")?.addEventListener("keydown", (event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    jaysStatsBudgetAskAi();
+                });
+                document.getElementById("jaysStatsBudgetTitleInput")?.addEventListener("input", (event) => {
+                    jaysStatsBudgetDraftTitle = String(event.target?.value || "");
+                });
+                document.getElementById("jaysStatsBudgetNotesInput")?.addEventListener("input", (event) => {
+                    jaysStatsBudgetDraftNotes = String(event.target?.value || "");
+                });
+                panel.querySelectorAll("[data-jays-budget-label]").forEach((input) => {
+                    input.addEventListener("input", () => {
+                        const index = Number(input.getAttribute("data-jays-budget-label"));
+                        if (!Number.isInteger(index) || index < 0 || index >= jaysStatsBudgetDraftLines.length) return;
+                        const nextLabel = String(input.value || "").trim().replace(/\s+/g, " ").slice(0, 120);
+                        jaysStatsBudgetDraftLines[index].label = nextLabel || "Untitled line";
+                        jaysStatsBudgetDraftLines[index].source = "manual";
+                    });
+                });
+                panel.querySelectorAll("[data-jays-budget-amount]").forEach((input) => {
+                    input.addEventListener("input", () => {
+                        const index = Number(input.getAttribute("data-jays-budget-amount"));
+                        if (!Number.isInteger(index) || index < 0 || index >= jaysStatsBudgetDraftLines.length) return;
+                        jaysStatsBudgetDraftLines[index].monthlyAmount = Math.max(0, jaysStatsNumber(input.value));
+                        jaysStatsBudgetDraftLines[index].source = "manual";
+                    });
+                });
+                panel.querySelectorAll("[data-jays-budget-delete]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const index = Number(button.getAttribute("data-jays-budget-delete"));
+                        if (!Number.isInteger(index) || index < 0 || index >= jaysStatsBudgetDraftLines.length) return;
+                        jaysStatsBudgetDraftLines.splice(index, 1);
+                        renderJaysStatsScreen();
+                    });
+                });
                 const jaysSourceInputMap = {
                     ignitionDisbursals: "jaysStatsIgnitionDisbursalsInput",
                     stripeIncome: "jaysStatsStripeIncomeInput",

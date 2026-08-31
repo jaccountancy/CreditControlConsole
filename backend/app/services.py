@@ -39364,6 +39364,495 @@ def bank_statement_payload(user: dict) -> dict:
     }
 
 
+JAYS_BUDGET_AI_RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["reply", "titleSuggestion", "tips", "edits"],
+    "properties": {
+        "reply": {"type": "string"},
+        "titleSuggestion": {"type": "string"},
+        "tips": {"type": "array", "items": {"type": "string"}},
+        "edits": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["action", "label", "monthlyAmount", "reason"],
+                "properties": {
+                    "action": {"type": "string"},
+                    "label": {"type": "string"},
+                    "monthlyAmount": {"type": "number"},
+                    "reason": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+JAYS_BUDGET_INTERNAL_TRANSFER_RE = re.compile(
+    r"\b(?:internal transfer|between accounts|own account|transfer to savings|sweep|journal transfer|to jaccountancy|from jaccountancy)\b",
+    re.IGNORECASE,
+)
+
+
+def _ensure_jays_budget_tables() -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS jays_budget_snapshots (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    notes TEXT NOT NULL DEFAULT '',
+                    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_jays_budget_snapshots_user_tenant_created
+                ON jays_budget_snapshots (user_id, tenant_id, created_at DESC)
+                """
+            )
+        connection.commit()
+
+
+def _jays_budget_label_key(value: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", str(value or "").strip().lower())).strip()
+
+
+def _jays_budget_line_label(row: dict) -> str:
+    raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
+    payee = str(raw.get("payee") or "").strip()
+    ai_category_name = str(row.get("ai_category_name") or "").strip()
+    description = str(row.get("description") or "").strip()
+    label = payee or ai_category_name or description
+    label = re.sub(r"\s+", " ", label).strip()
+    return label[:120] if label else "Unlabelled expense"
+
+
+def _jays_budget_skip_transaction(row: dict) -> bool:
+    amount = _money(row.get("effective_amount"))
+    if amount >= Decimal("0.00"):
+        return True
+    ai_tag = str(row.get("ai_category_tag") or "").strip().lower()
+    if "transfer" in ai_tag or ai_tag in {"internal", "internal_transfer"}:
+        return True
+    raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
+    text = " ".join([
+        str(row.get("description") or ""),
+        str(raw.get("payee") or ""),
+        str(raw.get("reference") or ""),
+    ]).strip()
+    if JAYS_BUDGET_INTERNAL_TRANSFER_RE.search(text):
+        return True
+    return False
+
+
+def _jays_budget_extract_total_cost(lines: list[dict]) -> Decimal:
+    candidates: list[tuple[int, Decimal]] = []
+    for line in lines:
+        label = str(line.get("label") or "").strip().lower()
+        amounts = [amount for amount in (line.get("amounts") or []) if amount is not None]
+        if not amounts:
+            continue
+        value = _money(amounts[-1])
+        absolute = abs(value)
+        if absolute <= Decimal("0.00"):
+            continue
+        if "total operating expenses" in label:
+            candidates.append((100, absolute))
+            continue
+        if "total expenses" in label:
+            candidates.append((95, absolute))
+            continue
+        if "total overhead" in label:
+            candidates.append((90, absolute))
+            continue
+        if "total direct costs" in label or "total cost of sales" in label:
+            candidates.append((85, absolute))
+            continue
+        if "expenses" in label and "total" in label:
+            candidates.append((80, absolute))
+    if candidates:
+        candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return _money(candidates[0][1])
+    return Decimal("0.00")
+
+
+async def _jays_budget_xero_cost_series(user: dict, month_count: int = 12) -> dict:
+    connection_row = get_xero_connection_for_user(user["id"])
+    month_ends = _juk_equity_previous_month_ends(max(1, int(month_count or 12)))
+    rows: list[dict] = []
+    for month_end in month_ends:
+        month_start = month_end.replace(day=1)
+        row = {
+            "monthKey": month_end.strftime("%Y-%m"),
+            "monthLabel": month_end.strftime("%b %Y"),
+            "totalCosts": None,
+            "error": "",
+        }
+        try:
+            payload = await xero_api_get(
+                connection_row,
+                "https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss",
+                {
+                    "fromDate": month_start.isoformat(),
+                    "toDate": month_end.isoformat(),
+                    "timeframe": "MONTH",
+                },
+            )
+            lines = _xero_report_lines(payload if isinstance(payload, dict) else {})
+            row["totalCosts"] = float(_jays_budget_extract_total_cost(lines))
+        except HTTPException as exc:
+            detail = exc.detail
+            row["error"] = str(detail.get("message") if isinstance(detail, dict) else detail or "Unable to fetch P&L from Xero.")
+        except Exception as exc:
+            row["error"] = _sync_error_message(exc)
+        rows.append(row)
+    values = [Decimal(str(row["totalCosts"])) for row in rows if row.get("totalCosts") is not None]
+    average = _money(sum(values) / Decimal(len(values))) if values else Decimal("0.00")
+    return {
+        "series": rows,
+        "averageMonthlyCosts": float(average),
+        "monthsLoaded": len(values),
+    }
+
+
+def _jays_budget_serialise_snapshot(row: dict) -> dict:
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    budget_lines = payload.get("budgetLines") if isinstance(payload.get("budgetLines"), list) else []
+    total = sum(_money(item.get("monthlyAmount")) for item in budget_lines if isinstance(item, dict))
+    return {
+        "id": str(row.get("id") or ""),
+        "title": str(row.get("title") or "").strip() or "Budget snapshot",
+        "notes": str(row.get("notes") or "").strip(),
+        "createdAt": _iso(row.get("created_at")) or "",
+        "payload": payload,
+        "lineCount": len(budget_lines),
+        "totalMonthlyBudget": float(_money(total)),
+    }
+
+
+async def jays_stats_budget_workspace(user: dict) -> dict:
+    _ensure_jays_budget_tables()
+    tenant_id = _bank_statement_tenant_id(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT transactions.transaction_date,
+                       transactions.description,
+                       transactions.raw,
+                       transactions.ai_category_name,
+                       transactions.ai_category_tag,
+                       COALESCE(transactions.manual_amount, transactions.amount) AS effective_amount
+                FROM bank_statement_transactions AS transactions
+                JOIN bank_statement_accounts AS accounts ON accounts.id = transactions.bank_account_id
+                JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
+                WHERE clients.tenant_id = %s
+                  AND clients.status = 'active'
+                ORDER BY transactions.transaction_date ASC, transactions.created_at ASC
+                """,
+                (tenant_id,),
+            )
+            transaction_rows = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT id, title, notes, payload, created_at
+                FROM jays_budget_snapshots
+                WHERE user_id = %s
+                  AND tenant_id = %s
+                ORDER BY created_at DESC
+                LIMIT 120
+                """,
+                (str(user["id"]), tenant_id),
+            )
+            snapshot_rows = cursor.fetchall()
+        connection.commit()
+
+    line_map: dict[str, dict] = {}
+    monthly_spend_totals: defaultdict[str, Decimal] = defaultdict(lambda: Decimal("0.00"))
+    for row in transaction_rows:
+        if _jays_budget_skip_transaction(row):
+            continue
+        transaction_date = row.get("transaction_date")
+        if isinstance(transaction_date, datetime):
+            transaction_date = transaction_date.date()
+        if not isinstance(transaction_date, date):
+            continue
+        month_key = transaction_date.strftime("%Y-%m")
+        amount = abs(_money(row.get("effective_amount")))
+        label = _jays_budget_line_label(row)
+        key = _jays_budget_label_key(label)
+        if not key:
+            continue
+        if key not in line_map:
+            line_map[key] = {
+                "key": key,
+                "label": label,
+                "months": set(),
+                "monthly": defaultdict(lambda: Decimal("0.00")),
+                "total": Decimal("0.00"),
+                "transactionCount": 0,
+            }
+        line_map[key]["months"].add(month_key)
+        line_map[key]["monthly"][month_key] += amount
+        line_map[key]["total"] += amount
+        line_map[key]["transactionCount"] += 1
+        monthly_spend_totals[month_key] += amount
+
+    recurring_lines: list[dict] = []
+    for item in line_map.values():
+        months = sorted(item["months"])
+        if len(months) < 2:
+            continue
+        monthly_values = [item["monthly"][month] for month in months]
+        average = _money(sum(monthly_values) / Decimal(len(monthly_values)))
+        latest_month = months[-1]
+        recurring_lines.append({
+            "key": item["key"],
+            "label": item["label"],
+            "monthsPresent": len(months),
+            "averageMonthlySpend": float(average),
+            "latestMonth": latest_month,
+            "latestMonthSpend": float(_money(item["monthly"][latest_month])),
+            "transactionCount": int(item["transactionCount"]),
+            "monthlyBreakdown": [
+                {"monthKey": month, "amount": float(_money(item["monthly"][month]))}
+                for month in months
+            ],
+        })
+    recurring_lines.sort(key=lambda row: (Decimal(str(row.get("averageMonthlySpend") or 0)), row.get("label") or ""), reverse=True)
+
+    budget_suggestion_lines = [
+        {
+            "label": row["label"],
+            "monthlyAmount": float(_money(row["averageMonthlySpend"])),
+            "source": "bank-recurring",
+            "monthsPresent": int(row["monthsPresent"]),
+        }
+        for row in recurring_lines[:24]
+    ]
+    xero_line = next((row for row in recurring_lines if "xero" in str(row.get("label") or "").lower()), None)
+
+    months_covered = sorted(monthly_spend_totals.keys())
+    total_spend = sum(monthly_spend_totals.values(), Decimal("0.00"))
+    average_spend = _money(total_spend / Decimal(len(months_covered))) if months_covered else Decimal("0.00")
+
+    try:
+        xero_costs = await _jays_budget_xero_cost_series(user, month_count=12)
+    except Exception as exc:
+        xero_costs = {
+            "series": [],
+            "averageMonthlyCosts": 0.0,
+            "monthsLoaded": 0,
+            "error": _sync_error_message(exc),
+        }
+
+    snapshots = [_jays_budget_serialise_snapshot(row) for row in snapshot_rows]
+    return {
+        "generatedAt": _iso(utcnow()) or "",
+        "coverage": {
+            "monthCount": len(months_covered),
+            "months": months_covered,
+            "averageMonthlySpend": float(average_spend),
+            "totalSpend": float(_money(total_spend)),
+        },
+        "recurringSpendLines": recurring_lines,
+        "suggestedBudgetLines": budget_suggestion_lines,
+        "xeroCosts": xero_costs,
+        "insights": {
+            "largestRecurringLabel": recurring_lines[0]["label"] if recurring_lines else "",
+            "largestRecurringAmount": float(_money(recurring_lines[0]["averageMonthlySpend"])) if recurring_lines else 0.0,
+            "xeroRecurringLabel": xero_line["label"] if xero_line else "",
+            "xeroRecurringAverage": float(_money(xero_line["averageMonthlySpend"])) if xero_line else 0.0,
+        },
+        "snapshots": snapshots,
+    }
+
+
+def _jays_budget_sanitise_lines(lines: object) -> list[dict]:
+    output = []
+    if not isinstance(lines, list):
+        return output
+    for index, item in enumerate(lines[:150]):
+        if not isinstance(item, dict):
+            continue
+        label = re.sub(r"\s+", " ", str(item.get("label") or "").strip())[:120]
+        if not label:
+            continue
+        amount = _money(item.get("monthlyAmount"))
+        if amount < Decimal("0.00"):
+            amount = abs(amount)
+        output.append({
+            "id": str(item.get("id") or f"line-{index + 1}"),
+            "label": label,
+            "monthlyAmount": float(amount),
+            "source": str(item.get("source") or "manual").strip()[:40] or "manual",
+        })
+    return output
+
+
+async def jays_stats_budget_ai_chat(user: dict, payload: dict | None = None) -> dict:
+    data = payload if isinstance(payload, dict) else {}
+    message = str(data.get("message") or "").strip()
+    if not message:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a message for Jenius AI.")
+    workspace = await jays_stats_budget_workspace(user)
+    budget_lines = _jays_budget_sanitise_lines(data.get("budgetLines"))
+    coverage = workspace.get("coverage") if isinstance(workspace.get("coverage"), dict) else {}
+    recurring = workspace.get("recurringSpendLines") if isinstance(workspace.get("recurringSpendLines"), list) else []
+    top_recurring = [
+        {
+            "label": str(item.get("label") or ""),
+            "averageMonthlySpend": float(_money(item.get("averageMonthlySpend"))),
+            "monthsPresent": int(item.get("monthsPresent") or 0),
+        }
+        for item in recurring[:20]
+    ]
+    xero_costs = workspace.get("xeroCosts") if isinstance(workspace.get("xeroCosts"), dict) else {}
+
+    settings = get_settings()
+    if not str(settings.openai_api_key or "").strip():
+        total = sum(_money(item.get("monthlyAmount")) for item in budget_lines)
+        tips = []
+        if int(coverage.get("monthCount") or 0) <= 1:
+            tips.append("Only one month of history is loaded. Upload Jan-Jul data for more reliable budget forecasts.")
+        if workspace.get("insights", {}).get("xeroRecurringLabel"):
+            tips.append("Xero appears as a recurring variable cost. Keep this line editable each month.")
+        return {
+            "engine": "local",
+            "reply": f"Current draft budget totals £{_money(total):,.2f} per month. I can see {len(top_recurring)} recurring expense patterns from uploaded statements.",
+            "titleSuggestion": f"Jaccountancy rolling budget {date.today().strftime('%b %Y')}",
+            "tips": tips,
+            "edits": [],
+            "workspace": workspace,
+        }
+
+    request_body = {
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "You are Jenius AI budget copilot. Reply with practical UK accounting budget guidance only. "
+                    "Never output markdown. Keep edits conservative and explain why."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "userMessage": message,
+                        "currentBudgetLines": budget_lines,
+                        "coverage": coverage,
+                        "topRecurringFromBankStatements": top_recurring,
+                        "xeroCosts": xero_costs,
+                    },
+                    default=_json_default,
+                ),
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "jays_budget_ai_response",
+                "schema": JAYS_BUDGET_AI_RESPONSE_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 1200,
+    }
+    response_payload = await _post_openai_responses(
+        request_body,
+        "jays stats budget assistant",
+        preferred_model=settings.openai_model,
+        user_id=user.get("id"),
+        feature="openai-core",
+        page="jays-stats",
+        timeout_seconds=35,
+    )
+    parsed = _load_openai_json_response(response_payload, "OpenAI returned invalid JSON for Jays Stats budget assistant.")
+    edits = []
+    for item in parsed.get("edits") if isinstance(parsed.get("edits"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        label = re.sub(r"\s+", " ", str(item.get("label") or "").strip())[:120]
+        if not label:
+            continue
+        action = str(item.get("action") or "set").strip().lower()
+        if action not in {"set", "add", "remove"}:
+            action = "set"
+        amount = abs(_money(item.get("monthlyAmount")))
+        edits.append({
+            "action": action,
+            "label": label,
+            "monthlyAmount": float(amount),
+            "reason": str(item.get("reason") or "").strip()[:300],
+        })
+    return {
+        "engine": "openai",
+        "reply": str(parsed.get("reply") or "").strip(),
+        "titleSuggestion": str(parsed.get("titleSuggestion") or "").strip(),
+        "tips": [str(item).strip() for item in (parsed.get("tips") or []) if str(item).strip()][:8],
+        "edits": edits[:24],
+        "workspace": workspace,
+    }
+
+
+async def jays_stats_budget_publish(user: dict, payload: dict | None = None) -> dict:
+    _ensure_jays_budget_tables()
+    data = payload if isinstance(payload, dict) else {}
+    tenant_id = _bank_statement_tenant_id(user)
+    title = re.sub(r"\s+", " ", str(data.get("title") or "").strip())[:160] or f"Budget snapshot {date.today().isoformat()}"
+    notes = str(data.get("notes") or "").strip()[:2000]
+    budget_lines = _jays_budget_sanitise_lines(data.get("budgetLines"))
+    chat_history = data.get("chatHistory") if isinstance(data.get("chatHistory"), list) else []
+    total = sum(_money(item.get("monthlyAmount")) for item in budget_lines)
+    snapshot_id = str(uuid4())
+    snapshot_payload = {
+        "title": title,
+        "notes": notes,
+        "budgetLines": budget_lines,
+        "totalMonthlyBudget": float(_money(total)),
+        "chatHistory": chat_history[-30:],
+        "publishedAt": _iso(utcnow()) or "",
+    }
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO jays_budget_snapshots (id, user_id, tenant_id, title, notes, payload, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
+                """,
+                (
+                    snapshot_id,
+                    str(user["id"]),
+                    tenant_id,
+                    title,
+                    notes,
+                    json.dumps(snapshot_payload, default=_json_default),
+                    utcnow(),
+                ),
+            )
+        connection.commit()
+    record_audit_event(
+        "jays_budget_snapshot",
+        snapshot_id,
+        "jays_budget.snapshot_published",
+        {
+            "title": title,
+            "line_count": len(budget_lines),
+            "total_monthly_budget": f"{_money(total):.2f}",
+        },
+        user["id"],
+    )
+    workspace = await jays_stats_budget_workspace(user)
+    return {"snapshotId": snapshot_id, "workspace": workspace}
+
+
 def add_bank_statement_client(user: dict, payload: dict) -> dict:
     tenant_id = _bank_statement_tenant_id(user)
     customer_id = str(payload.get("customerId") or "").strip()

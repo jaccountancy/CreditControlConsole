@@ -159,6 +159,9 @@ from .services import (
     delete_jashflow_loan,
     jashflow_payload,
     jashflow_interest_preview,
+    jays_stats_budget_ai_chat,
+    jays_stats_budget_publish,
+    jays_stats_budget_workspace,
     post_jashflow_interest_invoice,
     save_jashflow_settings,
     update_jashflow_loan,
@@ -5146,6 +5149,23 @@ async def api_payroll_tenant_overview(
 @app.get("/api/juk-equity")
 async def api_juk_equity(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **await juk_equity_payload(user)}
+
+
+@app.get("/api/jays-stats/budget")
+async def api_jays_stats_budget(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "budget": await jays_stats_budget_workspace(user)}
+
+
+@app.post("/api/jays-stats/budget/ai-chat")
+async def api_jays_stats_budget_ai_chat(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **await jays_stats_budget_ai_chat(user, payload)}
+
+
+@app.post("/api/jays-stats/budget/publish")
+async def api_jays_stats_budget_publish(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **await jays_stats_budget_publish(user, payload)}
 
 
 @app.post("/api/payroll-headcount/workspaces")
