@@ -37301,6 +37301,49 @@
                 justify-content: space-between;
                 align-items: flex-start;
             }
+            #jaysStats2Screen .jays-stats-report-toggle {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                border: 1px solid rgba(61, 85, 130, 0.18);
+                border-radius: 999px;
+                background: #fff;
+                color: #23436f;
+                font-size: 0.8rem;
+                font-weight: 700;
+            }
+            #jaysStats2Screen .jays-stats-report-panel {
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                border-radius: 12px;
+                background: #f8fbff;
+                padding: 12px;
+                display: grid;
+                gap: 10px;
+            }
+            #jaysStats2Screen .jays-stats-report-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 8px;
+            }
+            #jaysStats2Screen .jays-stats-report-grid article {
+                border: 1px solid rgba(61, 85, 130, 0.15);
+                border-radius: 10px;
+                background: #fff;
+                padding: 10px;
+                display: grid;
+                gap: 3px;
+            }
+            #jaysStats2Screen .jays-stats-report-grid span {
+                color: #5a7296;
+                font-size: 0.75rem;
+                font-weight: 650;
+            }
+            #jaysStats2Screen .jays-stats-report-grid strong {
+                color: #1f3f68;
+                font-size: 1rem;
+                font-weight: 800;
+            }
             #jaysStats2Screen .jays-stats-summary-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -49512,6 +49555,7 @@
             let jaysStats2BulkStreamKey = "unclassified";
             let jaysStats2AiOrderIds = [];
             let jaysStats2AiBalanceNotes = [];
+            let jaysStats2ReportingMode = false;
             const jaysStats2FetchLimit = 10000;
             let jaysStats2Workspace = {
                 account: { name: "JUK Trading Account", sortCode: "20-59-43", accountNumber: "93960404" },
@@ -89760,6 +89804,22 @@
                     jaysStats2SelectedMonthKey = monthKeys[0] || "";
                 }
                 const categoryStreams = jaysStats2StreamDefinitions();
+                const selectedMonthRows = groupedByMonth.get(jaysStats2SelectedMonthKey) || [];
+                const selectedMonthCredits = selectedMonthRows.filter((row) => Number(row?.amount || 0) > 0);
+                const selectedMonthCreditTotal = selectedMonthCredits.reduce((sum, row) => sum + Number(row?.amount || 0), 0);
+                const selectedMonthLatestDate = selectedMonthRows.reduce((latest, row) => {
+                    const value = String(row?.date || "");
+                    return value > latest ? value : latest;
+                }, "");
+                const selectedMonthByCategory = new Map();
+                selectedMonthCredits.forEach((row) => {
+                    const key = String(row?.categoryStreamKey || "unclassified");
+                    const current = selectedMonthByCategory.get(key) || { key, label: jaysStats2CategoryLabelForKey(key), amount: 0, count: 0 };
+                    current.amount += Number(row?.amount || 0);
+                    current.count += 1;
+                    selectedMonthByCategory.set(key, current);
+                });
+                const selectedMonthCategoryRows = [...selectedMonthByCategory.values()].sort((left, right) => Number(right.amount || 0) - Number(left.amount || 0));
                 const importSummary = jaysStats2LastImportSummary && typeof jaysStats2LastImportSummary === "object"
                     ? jaysStats2LastImportSummary
                     : null;
@@ -89885,14 +89945,48 @@
                                 <select id="jaysStats2MonthSelect">
                                     ${monthKeys.map((monthKey) => `<option value="${escapeHTML(monthKey)}" ${monthKey === jaysStats2SelectedMonthKey ? "selected" : ""}>${escapeHTML(formatMonthKey(monthKey))}</option>`).join("")}
                                 </select>
-                                <button class="ghost-button" id="jaysStats2PushButton" type="button" ${!jaysStats2SelectedMonthKey ? "disabled" : ""}>Push to Jays Stats</button>
-                                <button class="ghost-button" id="jaysStats2AiCategoriseButton" type="button" ${jaysStats2Categorising ? "disabled" : ""}>${jaysStats2Categorising ? "Categorising..." : "Auto-categorise with Jenius AI"}</button>
                                 <button class="primary-button" id="jaysStats2UploadButton" type="button" ${jaysStats2Importing ? "disabled" : ""}>${jaysStats2Importing ? "Processing..." : "Upload statement files"}</button>
-                                <button class="ghost-button" id="jaysStats2RefreshButton" type="button" ${jaysStats2Loading ? "disabled" : ""}>Refresh</button>
+                                <label class="jays-stats-report-toggle" for="jaysStats2ReportingModeToggle">
+                                    <input type="checkbox" id="jaysStats2ReportingModeToggle" ${jaysStats2ReportingMode ? "checked" : ""}>
+                                    <span>${jaysStats2ReportingMode ? "Reporting mode on" : "Reporting mode"}</span>
+                                </label>
                             </div>
                         </header>
                         ${importProcessingBanner}
                         <p class="jays-stats-meta-note">Date range: ${escapeHTML(formatDate(summary.earliestDate || ""))} to ${escapeHTML(formatDate(summary.latestDate || ""))}. Edit date, description, amount, running balance, and category directly in-grid.</p>
+                        <section class="jays-stats-report-panel" ${jaysStats2ReportingMode ? "" : "hidden"}>
+                            <p class="eyebrow">Cash collection report</p>
+                            <h4>${escapeHTML(formatMonthKey(jaysStats2SelectedMonthKey || ""))}</h4>
+                            <div class="jays-stats-report-grid">
+                                <article><span>Total cash collected (credits)</span><strong>${escapeHTML(formatCurrency(selectedMonthCreditTotal))}</strong></article>
+                                <article><span>Credit transactions</span><strong>${escapeHTML(selectedMonthCredits.length.toLocaleString("en-GB"))}</strong></article>
+                                <article><span>Latest transaction date</span><strong>${escapeHTML(formatDate(selectedMonthLatestDate || ""))}</strong></article>
+                                <article><span>Rows in selected month</span><strong>${escapeHTML(selectedMonthRows.length.toLocaleString("en-GB"))}</strong></article>
+                            </div>
+                            <section class="jays-stats-table-wrap is-excel">
+                                <table class="jays-stats-table is-excel-grid">
+                                    <thead>
+                                        <tr>
+                                            <th>Category</th>
+                                            <th>Credits</th>
+                                            <th>Count</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${selectedMonthCategoryRows.length
+                                            ? selectedMonthCategoryRows.map((row) => `
+                                                <tr>
+                                                    <td style="padding:10px;">${escapeHTML(String(row.label || "Unclassified"))}</td>
+                                                    <td style="padding:10px;">${escapeHTML(formatCurrency(Number(row.amount || 0)))}</td>
+                                                    <td style="padding:10px;">${escapeHTML(Number(row.count || 0).toLocaleString("en-GB"))}</td>
+                                                </tr>
+                                            `).join("")
+                                            : '<tr><td colspan="3" style="padding:10px;">No credit transactions for this month yet.</td></tr>'}
+                                    </tbody>
+                                </table>
+                            </section>
+                        </section>
+                        <section ${jaysStats2ReportingMode ? "hidden" : ""}>
                         ${serverCapWarning ? `<p class="jays-stats-inline-warning">${escapeHTML(serverCapWarning)}</p>` : ""}
                         ${warningSummaryCopy ? `<p class="jays-stats-inline-warning">${escapeHTML(warningSummaryCopy)}</p>` : ""}
                         <section class="jays-stats-table-toolbar">
@@ -89952,6 +90046,7 @@
                                 <tbody>${rows || `<tr><td colspan="${showRunningBalanceColumn ? 7 : 6}" style="padding:10px;">No rows match current filters.</td></tr>`}</tbody>
                             </table>
                         </section>
+                        </section>
                         ${showImportExamplesModal ? `
                         <section class="jays-stats-upload-summary-modal" role="dialog" aria-modal="true" aria-labelledby="jaysStats2UploadSummaryTitle" id="jaysStats2ImportExamplesModal">
                             <article class="jays-stats-upload-summary-card">
@@ -89983,9 +90078,10 @@
                 document.getElementById("jaysStats2UploadButton")?.addEventListener("click", () => {
                     document.getElementById("jaysStats2StatementFileInput")?.click();
                 });
-                document.getElementById("jaysStats2RefreshButton")?.addEventListener("click", () => loadJaysStats2());
-                document.getElementById("jaysStats2PushButton")?.addEventListener("click", () => pushJaysStats2MonthToJaysStats());
-                document.getElementById("jaysStats2AiCategoriseButton")?.addEventListener("click", () => jaysStats2RunAiCategorisation());
+                document.getElementById("jaysStats2ReportingModeToggle")?.addEventListener("change", (event) => {
+                    jaysStats2ReportingMode = Boolean(event?.target?.checked);
+                    renderJaysStats2Screen();
+                });
                 document.getElementById("jaysStats2DismissExamplesButton")?.addEventListener("click", () => closeJaysStats2UploadSummaryModal());
                 document.getElementById("jaysStats2ImportExamplesModal")?.addEventListener("click", (event) => {
                     if (event.target?.id === "jaysStats2ImportExamplesModal") closeJaysStats2UploadSummaryModal();
