@@ -39640,17 +39640,19 @@ def _jays_stats2_heuristic_stream_key(description: object, amount: Decimal) -> t
     text = str(description or "").strip().lower()
     if amount <= Decimal("0.00"):
         return "ignore", 0.92
+    if re.search(r"\b(rapyd|rapyd payments)\b", text):
+        return "vending-income", 0.95
     if re.search(r"\b(ignitionpay|practice ignition)\b", text):
         return "ignition-disbursals", 0.94
     if re.search(r"\b(stripe|visa direct payment stripe)\b", text):
         return "stripe-income", 0.93
     if re.search(r"\b(vending|sevenoaks vending)\b", text):
         return "vending-income", 0.92
-    if re.search(r"\b(internal transfer|between accounts|own account|mobile-channel ft|journal transfer|sweep)\b", text):
+    if re.search(r"\b(internal transfer|between accounts|own account|mobile-channel ft|journal transfer|sweep|capital on tap|205959|93960404)\b", text):
         return "internal-transfer", 0.90
-    if re.search(r"\b(rapyd|counter credit|bgc|credit payment)\b", text):
+    if re.search(r"\b(counter credit|bgc|credit payment)\b", text):
         return "bank-transfers", 0.66
-    return "unclassified", 0.0
+    return "bank-transfers", 0.60
 
 
 def _jays_stats2_load_category_rules(user_id: str, tenant_id: str) -> dict[str, dict]:
@@ -39751,19 +39753,6 @@ def _ensure_jays_stats2_tables() -> None:
                 cursor.execute("DROP INDEX idx_jays_stats2_tx_dedupe")
             cursor.execute(
                 """
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_jays_stats2_tx_dedupe_active
-                ON jays_stats2_transactions (user_id, tenant_id, source_hash)
-                WHERE is_voided = FALSE
-                """
-            )
-            cursor.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_jays_stats2_tx_user_tenant_date
-                ON jays_stats2_transactions (user_id, tenant_id, transaction_date DESC, created_at DESC)
-                """
-            )
-            cursor.execute(
-                """
                 ALTER TABLE jays_stats2_transactions
                 ADD COLUMN IF NOT EXISTS category_stream_key TEXT NOT NULL DEFAULT 'unclassified'
                 """
@@ -39808,6 +39797,42 @@ def _ensure_jays_stats2_tables() -> None:
                 """
                 ALTER TABLE jays_stats2_transactions
                 ADD COLUMN IF NOT EXISTS voided_by_user_id TEXT NULL
+                """
+            )
+            cursor.execute(
+                """
+                WITH ranked_duplicates AS (
+                    SELECT id
+                    FROM (
+                        SELECT id,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY user_id, tenant_id, source_hash
+                                   ORDER BY created_at ASC, id ASC
+                               ) AS duplicate_rank
+                        FROM jays_stats2_transactions
+                        WHERE is_voided = FALSE
+                    ) ranked
+                    WHERE ranked.duplicate_rank > 1
+                )
+                UPDATE jays_stats2_transactions tx
+                SET is_voided = TRUE,
+                    voided_at = NOW(),
+                    voided_by_user_id = COALESCE(NULLIF(tx.voided_by_user_id, ''), 'system-migration')
+                FROM ranked_duplicates
+                WHERE tx.id = ranked_duplicates.id
+                """
+            )
+            cursor.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_jays_stats2_tx_dedupe_active
+                ON jays_stats2_transactions (user_id, tenant_id, source_hash)
+                WHERE is_voided = FALSE
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_jays_stats2_tx_user_tenant_date
+                ON jays_stats2_transactions (user_id, tenant_id, transaction_date DESC, created_at DESC)
                 """
             )
             cursor.execute(

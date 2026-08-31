@@ -2467,6 +2467,62 @@ class ServicesRegressionTests(unittest.TestCase):
         self.assertIn("DELETE FROM pi_clearing_run_rows", all_queries)
         self.assertIn("DELETE FROM pi_clearing_runs", all_queries)
 
+    def test_jays_stats2_table_migration_adds_columns_before_partial_unique_index(self):
+        class _Cursor:
+            def __init__(self):
+                self.executed: list[str] = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def execute(self, query, _params=None):
+                self.executed.append(str(query or ""))
+
+            def fetchone(self):
+                return None
+
+            def fetchall(self):
+                return []
+
+        class _Conn:
+            def __init__(self):
+                self._cursor = _Cursor()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def cursor(self):
+                return self._cursor
+
+            def commit(self):
+                return None
+
+        recorder = _Conn()
+        with patch.object(services, "get_connection", return_value=recorder):
+            services._ensure_jays_stats2_tables()
+
+        queries = recorder._cursor.executed
+        is_voided_alter_index = next(
+            index for index, query in enumerate(queries)
+            if "ADD COLUMN IF NOT EXISTS is_voided" in query
+        )
+        dedupe_update_index = next(
+            index for index, query in enumerate(queries)
+            if "WITH ranked_duplicates AS" in query
+        )
+        unique_index_create = next(
+            index for index, query in enumerate(queries)
+            if "CREATE UNIQUE INDEX IF NOT EXISTS idx_jays_stats2_tx_dedupe_active" in query
+        )
+        self.assertLess(is_voided_alter_index, unique_index_create)
+        self.assertLess(dedupe_update_index, unique_index_create)
+
 
 if __name__ == "__main__":
     unittest.main()
