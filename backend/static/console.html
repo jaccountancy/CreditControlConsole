@@ -90104,6 +90104,7 @@
                     jaysStats2SelectedIds.has(String(row?.id || "")) ? count + 1 : count
                 ), 0);
                 const allVisibleSelected = visibleTransactions.length > 0 && selectedVisibleCount === visibleTransactions.length;
+                const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
                 const rows = visibleTransactions.map((row) => {
                     const txId = String(row?.id || "");
                     const draft = jaysStats2EditDrafts[txId] && typeof jaysStats2EditDrafts[txId] === "object" ? jaysStats2EditDrafts[txId] : {};
@@ -90351,7 +90352,15 @@
                             <table class="jays-stats-table is-excel-grid">
                                 <thead>
                                     <tr>
-                                        <th style="width:42px;">Sel</th>
+                                        <th style="width:42px;">
+                                            <input
+                                                id="jaysStats2SelectAllVisibleHeader"
+                                                type="checkbox"
+                                                aria-label="Select all visible rows"
+                                                ${allVisibleSelected ? "checked" : ""}
+                                                ${visibleTransactions.length ? "" : "disabled"}
+                                            >
+                                        </th>
                                         <th>Date</th>
                                         <th>Description</th>
                                         <th>Amount</th>
@@ -90739,8 +90748,7 @@
                     jaysStats2CurrentPage = Math.max(1, Number(jaysStats2CurrentPage || 1) + 1);
                     renderJaysStats2Screen();
                 });
-                document.getElementById("jaysStats2SelectAllVisibleToggle")?.addEventListener("change", (event) => {
-                    const shouldSelect = Boolean(event?.target?.checked);
+                const applyJaysStats2SelectVisible = (shouldSelect) => {
                     if (shouldSelect) {
                         visibleTransactions.forEach((row) => {
                             const txId = String(row?.id || "");
@@ -90753,7 +90761,17 @@
                         });
                     }
                     renderJaysStats2Screen();
+                };
+                document.getElementById("jaysStats2SelectAllVisibleToggle")?.addEventListener("change", (event) => {
+                    applyJaysStats2SelectVisible(Boolean(event?.target?.checked));
                 });
+                document.getElementById("jaysStats2SelectAllVisibleHeader")?.addEventListener("change", (event) => {
+                    applyJaysStats2SelectVisible(Boolean(event?.target?.checked));
+                });
+                const selectAllHeader = document.getElementById("jaysStats2SelectAllVisibleHeader");
+                if (selectAllHeader) {
+                    selectAllHeader.indeterminate = someVisibleSelected;
+                }
                 document.getElementById("jaysStats2BulkCategorySelect")?.addEventListener("change", (event) => {
                     jaysStats2BulkStreamKey = String(event?.target?.value || "unclassified");
                 });
