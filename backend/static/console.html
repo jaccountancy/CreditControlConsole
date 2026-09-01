@@ -38319,8 +38319,8 @@
                                 </span>
                                 <div class="insights-hero-copy">
                                     <span class="insights-hero-chip" id="insightsHeroChip">Jenius AI · Live</span>
-                                    <h2 class="insights-live-greeting insights-hero-title" id="insightsLiveGreeting">Jaccountancy Performance Dashboard</h2>
-                                    <p class="detail-meta" id="insightsMeta">Xero-synced visibility on income, cash collection, receivables risk, and customer exposure.</p>
+                                    <h2 class="insights-live-greeting insights-hero-title" id="insightsLiveGreeting">Loading local time...</h2>
+                                    <p class="detail-meta" id="insightsMeta">Your live command centre — debtor book, cash collection, Xero sync health and workflow actions, all in one place.</p>
                                 </div>
                             </div>
                             <div class="insights-hero-xero-host" id="insightsHeroXeroStatus" hidden></div>
@@ -102996,29 +102996,59 @@
                 }
             }
 
+            function ordinalDay(day) {
+                const suffix = day % 10 === 1 && day !== 11 ? "st" : day % 10 === 2 && day !== 12 ? "nd" : day % 10 === 3 && day !== 13 ? "rd" : "th";
+                return `${day}${suffix}`;
+            }
+
             function insightsGreetingText(now = new Date()) {
                 return insightsTopbarTitle();
             }
 
+            function insightsTimeOfDayGreeting(now = new Date()) {
+                const hour = now.getHours();
+                if (hour < 12) return "Good Morning";
+                if (hour < 18) return "Good Afternoon";
+                return "Good Evening";
+            }
+
+            function insightsDateTimeParts(now = new Date()) {
+                const day = now.toLocaleDateString("en-GB", { weekday: "long" });
+                const date = `${ordinalDay(now.getDate())} ${now.toLocaleDateString("en-GB", { month: "long" })} ${now.getFullYear()}`;
+                const time = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+                return { day, date, time };
+            }
+
+            function insightsGreetingTimestamp(now = new Date()) {
+                const parts = insightsDateTimeParts(now);
+                return `${insightsTimeOfDayGreeting(now)}, ${parts.day}, ${parts.date}, ${parts.time}`;
+            }
+
             function updateInsightsLiveGreeting() {
+                const now = new Date();
                 const target = document.getElementById("insightsLiveGreeting");
                 if (target) {
                     target.classList.remove("is-ticking");
-                    target.textContent = "Jaccountancy Performance Dashboard";
+                    target.textContent = insightsGreetingText(now);
                     window.requestAnimationFrame(() => target.classList.add("is-ticking"));
                 }
+                const parts = insightsDateTimeParts(now);
                 const salutationTarget = document.getElementById("insightsHeroChip");
                 if (salutationTarget) {
-                    salutationTarget.textContent = "Xero-synced live metrics";
+                    salutationTarget.textContent = insightsGreetingTimestamp(now);
                 }
+                const dayTarget = document.getElementById("insightsLiveDay");
+                const dateTarget = document.getElementById("insightsLiveDate");
+                const timeTarget = document.getElementById("insightsLiveTime");
+                if (dayTarget) dayTarget.textContent = parts.day;
+                if (dateTarget) dateTarget.textContent = parts.date;
+                if (timeTarget) timeTarget.textContent = parts.time;
             }
 
             function startInsightsClock() {
                 updateInsightsLiveGreeting();
-                if (insightsClockTimer) {
-                    window.clearInterval(insightsClockTimer);
-                    insightsClockTimer = null;
-                }
+                if (insightsClockTimer) return;
+                insightsClockTimer = window.setInterval(updateInsightsLiveGreeting, 30000);
             }
 
             function localInsightsPayload(status = "local") {
@@ -103661,7 +103691,10 @@
                     heroXeroStatus.innerHTML = "";
                 }
                 const homeMarkup = aiCopilotHomeInsights(analytics, ai);
-                target.innerHTML = `<div class="insights-home-refresh-shell">${homeMarkup.replace('<div class="insights-home">', `<div class="insights-home${insightsLoading ? " is-refreshing" : ""}">`)}</div>`;
+                const refreshOverlay = insightsLoading
+                    ? `<div class="insights-refresh-overlay" role="status" aria-live="polite"><div class="insights-refresh-overlay-status"><span class="insights-refresh-overlay-spinner" aria-hidden="true"></span><div class="insights-refresh-overlay-copy"><strong>Refreshing insights</strong><span>Updating dashboard metrics and status</span></div></div></div>`
+                    : "";
+                target.innerHTML = `<div class="insights-home-refresh-shell">${homeMarkup.replace('<div class="insights-home">', `<div class="insights-home${insightsLoading ? " is-refreshing" : ""}">`)}${refreshOverlay}</div>`;
                 renderInsightsQuickAccessMenu();
                 bindInsightsHomeInteractions(target);
             }
@@ -103972,6 +104005,11 @@
                             </div>
                             <div class="insights-hero-greeting-actions" id="insightsQuickAccessDock">
                                 <div class="insights-home-action-controls">
+                                    <div class="insights-hero-datetime" aria-live="polite">
+                                        <span class="insights-hero-day" id="insightsLiveDay">--</span>
+                                        <span class="insights-hero-date" id="insightsLiveDate">--</span>
+                                        <span class="insights-hero-time" id="insightsLiveTime">--</span>
+                                    </div>
                                     <button class="insights-quick-access-toggle" id="insightsQuickAccessToggle" type="button" aria-expanded="false" aria-controls="insightsQuickAccessMenu">Quick Access</button>
                                 </div>
                                 <div class="insights-quick-access-modal" id="insightsQuickAccessMenu" hidden>
@@ -104196,61 +104234,33 @@
                 const statusCounts = analytics.statusCounts || [];
                 const monthly = insightMonthlyRows(analytics);
                 const topCustomers = analytics.topCustomers || [];
+                const conversations = (ai.conversations || []).filter((item) => item && (item.question || item.answer)).slice(0, 4);
                 const monthlyRecent = monthly.slice(-6);
-                const latest = monthly[monthly.length - 1] || {};
-                const previous = monthly[monthly.length - 2] || {};
-                const ytdTurnover = monthly.reduce((sum, row) => sum + Number(row.turnover || row.invoiced || 0), 0);
-                const ytdCollected = monthly.reduce((sum, row) => sum + Number(row.cashCollected || row.paid || 0), 0);
-                const ytdCollectionRatio = ytdTurnover > 0 ? (ytdCollected / ytdTurnover) * 100 : 0;
-                const latestTurnover = Number(latest.turnover || latest.invoiced || 0);
-                const latestCollected = Number(latest.cashCollected || latest.paid || 0);
-                const previousTurnover = Number(previous.turnover || previous.invoiced || 0);
-                const previousCollected = Number(previous.cashCollected || previous.paid || 0);
-                const cashDelta = latestCollected - previousCollected;
-                const connectedCount = insightsConnectedXeroSystemsCount();
-                const lastSync = insightsLatestFullSyncDate();
-                const syncAgeHours = lastSync ? (Date.now() - lastSync.getTime()) / (60 * 60 * 1000) : Number.POSITIVE_INFINITY;
-                const syncHealth = syncAgeHours < 24 ? "Healthy" : "Stale";
-                const syncDetail = lastSync ? `Last full sync ${insightsFullSyncRelativeDetail(lastSync)}` : "No completed full sync yet";
                 const topCustomerRows = topCustomers.slice(0, 8).map((customer) => ({
                     name: customer.name || "Client",
                     value: Number(customer.totalDue || 0),
                 }));
-                const monthlyTableRows = monthlyRecent.map((row) => [
-                    row.label || row.month || "",
-                    formatCurrency(row.turnover || row.invoiced || 0),
-                    formatCurrency(row.cashCollected || row.paid || 0),
-                    formatCurrency(row.outstanding || 0),
-                    formatPercent(row.collectionRatio || 0),
-                ]);
                 return `<div class="insights-home">
-                    <section class="insight-chart insights-home-section">
-                        <span>Jaccountancy performance (Xero)</span>
-                        <p class="detail-meta">Core income, collections, and receivables metrics from synced Xero data.</p>
-                        ${insightCardGrid([
-                            ["YTD income", formatCurrency(ytdTurnover), "Turnover across available months"],
-                            ["YTD cash collected", formatCurrency(ytdCollected), "Paid cash across available months"],
-                            ["YTD collection ratio", formatPercent(ytdCollectionRatio), "Cash collected vs turnover"],
-                            ["Current receivables", formatCurrency(totals.totalOutstanding || 0), `${Number(totals.openInvoiceCount || 0).toLocaleString("en-GB")} open invoices"],
-                            ["Overdue receivables", formatCurrency(totals.totalOverdue || 0), `${Number(totals.overdueInvoiceCount || 0).toLocaleString("en-GB")} overdue invoices"],
-                            ["Latest month turnover", formatCurrency(latestTurnover), latest.label || "Latest month"],
-                            ["Latest month cash", formatCurrency(latestCollected), `${cashDelta >= 0 ? "+" : ""}${formatCurrency(cashDelta)} vs previous month`],
-                            ["Xero sync status", syncHealth, `${connectedCount.toLocaleString("en-GB")} tenant${connectedCount === 1 ? "" : "s"} connected · ${syncDetail}`],
-                        ])}
-                    </section>
+                    ${insightsQuickActionsCard(analytics)}
                     <div class="insight-two-column insights-home-section" id="insightsExposureSection">
                         ${barChart("Top customer exposure", topCustomerRows, "value", "name")}
                         ${barChart("Last 6 months collection ratio", monthlyRecent, "collectionRatio", "label")}
                     </div>
                     <div class="insight-two-column insights-home-section">
-                        ${barChart("Monthly turnover (last 6 months)", monthlyRecent, "turnover")}
-                        ${barChart("Monthly cash collected (last 6 months)", monthlyRecent, "cashCollected")}
-                    </div>
-                    <div class="insight-two-column insights-home-section">
                         ${donutChart("Outstanding by status", statusCounts, "value")}
                         ${barChart("Status value mix", statusCounts, "value")}
                     </div>
-                    ${insightDataTable("Monthly performance table", ["Month", "Turnover", "Cash collected", "Outstanding", "Collection ratio"], monthlyTableRows, "No monthly performance data available.")}
+                    <section class="insight-chart insights-home-section" id="insightsConversationsSection">
+                        <span>Conversational Discussions</span>
+                        <div class="copilot-conversation-grid">
+                            ${conversations.length ? conversations.map((item) => `
+                                <article class="copilot-conversation-turn">
+                                    <strong>${escapeHTML(item.question || "Question")}</strong>
+                                    <p>${escapeHTML(item.answer || "")}</p>
+                                </article>
+                            `).join("") : `<p>No conversational discussions are available yet.</p>`}
+                        </div>
+                    </section>
                 </div>`;
             }
 

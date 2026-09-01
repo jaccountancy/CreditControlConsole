@@ -40181,12 +40181,6 @@ def _jays_stats_parse_pdf_transactions_local(file_bytes: bytes) -> list[dict]:
 
 async def _jays_stats2_extract_pdf_rows(file_bytes: bytes, file_name: str, parser_messages: list[str] | None = None) -> list[dict]:
     messages = parser_messages if isinstance(parser_messages, list) else []
-    local_rows = _jays_stats_parse_pdf_transactions_local(file_bytes)
-    if local_rows:
-        messages.append(f"{file_name}: used local PDF parser.")
-        return local_rows
-    messages.append(f"{file_name}: local PDF parser returned no rows; trying OpenAI extraction.")
-
     openai_error: HTTPException | None = None
     try:
         extracted = await _extract_bank_statement_pdf(file_bytes, file_name, {"account_number": "", "bank_name": ""})
@@ -40202,15 +40196,22 @@ async def _jays_stats2_extract_pdf_rows(file_bytes: bytes, file_name: str, parse
                 "source": "pdf-openai",
             })
         if rows:
-            messages.append(f"{file_name}: used OpenAI extraction fallback.")
+            messages.append(f"{file_name}: used OpenAI extraction.")
             return rows
-        messages.append(f"{file_name}: OpenAI extraction returned no rows.")
+        messages.append(f"{file_name}: OpenAI extraction returned no rows; trying local parser.")
     except HTTPException as exc:
         openai_error = exc
         detail = str(exc.detail or "").strip()
-        messages.append(f"{file_name}: OpenAI extraction unavailable ({detail or f'HTTP {exc.status_code}'}).")
+        messages.append(
+            f"{file_name}: OpenAI extraction unavailable ({detail or f'HTTP {exc.status_code}'}); trying local parser."
+        )
     except Exception as exc:
-        messages.append(f"{file_name}: OpenAI extraction failed ({exc}).")
+        messages.append(f"{file_name}: OpenAI extraction failed ({exc}); trying local parser.")
+
+    local_rows = _jays_stats_parse_pdf_transactions_local(file_bytes)
+    if local_rows:
+        messages.append(f"{file_name}: used local PDF parser fallback.")
+        return local_rows
     if openai_error:
         raise openai_error
     raise HTTPException(
