@@ -40179,6 +40179,47 @@ def _jays_stats_parse_pdf_transactions_local(file_bytes: bytes) -> list[dict]:
     return rows
 
 
+async def _jays_stats2_extract_pdf_rows(file_bytes: bytes, file_name: str, parser_messages: list[str] | None = None) -> list[dict]:
+    messages = parser_messages if isinstance(parser_messages, list) else []
+    openai_error: HTTPException | None = None
+    try:
+        extracted = await _extract_bank_statement_pdf(file_bytes, file_name, {"account_number": "", "bank_name": ""})
+        rows: list[dict] = []
+        for transaction in extracted.get("transactions") or []:
+            if not isinstance(transaction, dict):
+                continue
+            rows.append({
+                "date": transaction.get("date"),
+                "description": transaction.get("description") or transaction.get("payee") or "",
+                "amount": transaction.get("amount"),
+                "runningBalance": transaction.get("balance"),
+                "source": "pdf-openai",
+            })
+        if rows:
+            messages.append(f"{file_name}: used OpenAI extraction.")
+            return rows
+        messages.append(f"{file_name}: OpenAI extraction returned no rows; trying local parser.")
+    except HTTPException as exc:
+        openai_error = exc
+        detail = str(exc.detail or "").strip()
+        messages.append(
+            f"{file_name}: OpenAI extraction unavailable ({detail or f'HTTP {exc.status_code}'}); trying local parser."
+        )
+    except Exception as exc:
+        messages.append(f"{file_name}: OpenAI extraction failed ({exc}); trying local parser.")
+
+    local_rows = _jays_stats_parse_pdf_transactions_local(file_bytes)
+    if local_rows:
+        messages.append(f"{file_name}: used local PDF parser fallback.")
+        return local_rows
+    if openai_error:
+        raise openai_error
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"No transactions could be extracted from {file_name}.",
+    )
+
+
 def _jays_stats2_normalise_transaction(row: dict, source_kind: str, source_file_name: str) -> dict | None:
     if not isinstance(row, dict):
         return None
@@ -40389,29 +40430,7 @@ async def jays_stats2_import_transactions(user: dict, file_items: list[dict]) ->
                 detail=f"Unsupported file type for {file_name}. Save it as .xlsx, .csv, or PDF and upload again.",
             )
         if lower_name.endswith(".pdf") or "pdf" in content_type:
-            rows = _jays_stats_parse_pdf_transactions_local(file_bytes)
-            if not rows:
-                try:
-                    extracted = await _extract_bank_statement_pdf(file_bytes, file_name, {"account_number": "", "bank_name": ""})
-                except HTTPException:
-                    raise
-                except Exception as exc:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Could not extract transactions from {file_name}. Install pypdf on the server or enable AI extraction. Error: {exc}",
-                    ) from exc
-                rows = []
-                for transaction in extracted.get("transactions") or []:
-                    if not isinstance(transaction, dict):
-                        continue
-                    rows.append({
-                        "date": transaction.get("date"),
-                        "description": transaction.get("description") or transaction.get("payee") or "",
-                        "amount": transaction.get("amount"),
-                        "runningBalance": transaction.get("balance"),
-                        "source": "pdf-openai",
-                    })
-                parser_messages.append(f"{file_name}: used OpenAI extraction fallback.")
+            rows = await _jays_stats2_extract_pdf_rows(file_bytes, file_name, parser_messages)
             extracted_rows.extend(_jays_stats2_normalise_transaction(row, "pdf", file_name) for row in rows)
             file_summary["extractedCount"] += len(rows)
             continue
@@ -40619,29 +40638,7 @@ async def jays_stats2_preview_transactions(user: dict, file_items: list[dict]) -
                 detail=f"Unsupported file type for {file_name}. Save it as .xlsx, .csv, or PDF and upload again.",
             )
         if lower_name.endswith(".pdf") or "pdf" in content_type:
-            rows = _jays_stats_parse_pdf_transactions_local(file_bytes)
-            if not rows:
-                try:
-                    extracted = await _extract_bank_statement_pdf(file_bytes, file_name, {"account_number": "", "bank_name": ""})
-                except HTTPException:
-                    raise
-                except Exception as exc:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Could not extract transactions from {file_name}. Install pypdf on the server or enable AI extraction. Error: {exc}",
-                    ) from exc
-                rows = []
-                for transaction in extracted.get("transactions") or []:
-                    if not isinstance(transaction, dict):
-                        continue
-                    rows.append({
-                        "date": transaction.get("date"),
-                        "description": transaction.get("description") or transaction.get("payee") or "",
-                        "amount": transaction.get("amount"),
-                        "runningBalance": transaction.get("balance"),
-                        "source": "pdf-openai",
-                    })
-                parser_messages.append(f"{file_name}: used OpenAI extraction fallback.")
+            rows = await _jays_stats2_extract_pdf_rows(file_bytes, file_name, parser_messages)
             extracted_rows.extend(_jays_stats2_normalise_transaction(row, "pdf", file_name) for row in rows)
             file_summary["extractedCount"] += len(rows)
             continue
