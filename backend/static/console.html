@@ -56051,6 +56051,21 @@
                 setElementVisible(document.getElementById("piClearingAccountPageScreen"), activeView === "pi-clearing-account-page");
                 setElementVisible(document.getElementById("identityVerificationScreen"), activeView === "identity-verification");
                 setElementVisible(document.getElementById("vaultScreen"), activeView === "vault");
+                if (activeView === "jays-stats-2") {
+                    const shell = document.querySelector("main.ledger-shell");
+                    if (shell) {
+                        shell.querySelectorAll(":scope > section[id$='Screen']").forEach((section) => {
+                            if (section.id === "jaysStats2Screen") return;
+                            section.hidden = true;
+                            section.style.display = "none";
+                            section.classList.remove("is-screen-visible", "is-screen-entering", "is-screen-leaving");
+                            if (section.__screenHideTimer) {
+                                window.clearTimeout(section.__screenHideTimer);
+                                section.__screenHideTimer = 0;
+                            }
+                        });
+                    }
+                }
                 const isClientRegisterMainPageOpen = !!(companiesHouseSettings?.authRegisterClientPage?.open);
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
