@@ -40147,6 +40147,13 @@ def _jays_stats_parse_pdf_transactions_local(file_bytes: bytes) -> list[dict]:
             current_desc.append(line)
             index += 1
             continue
+        if len(money_tokens) == 1:
+            # Barclays FX debit descriptions often include "non-sterling transfer fee £0.xx"
+            # on a separate line before the actual debit+balance line. Do not treat that
+            # single value as a standalone transaction amount.
+            current_desc.append(line)
+            index += 1
+            continue
         cleaned_line = line
         for token in money_tokens:
             cleaned_line = cleaned_line.replace(token, " ")
