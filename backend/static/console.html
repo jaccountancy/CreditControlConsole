@@ -39932,19 +39932,6 @@
 
                     <section class="late-charges-screen detail-card" id="piClearingAccountPageScreen" hidden>
                         <section class="detail-panel">
-                            <div class="detail-hero">
-                                <div>
-                                    <p class="eyebrow">Practice Manager</p>
-                                    <h3>PI Clearing account</h3>
-                                    <p class="detail-meta">Daily balancing view for the PI Clearing nominal account in Jaccountancy Xero.</p>
-                                </div>
-                                <div class="detail-actions">
-                                    <button class="ghost-button" id="piClearingDailyRefreshButton" type="button">Refresh data</button>
-                                    <button class="ghost-button" id="piClearingDailyRunButton" type="button">Run fresh Xero check</button>
-                                    <button class="primary-button" id="piClearingDailyWorkflowButton" type="button">Open full workflow</button>
-                                </div>
-                            </div>
-                            <div class="summary-grid pi-clearing-kpi-grid" id="piClearingDailySummaryGrid"></div>
                             <section class="detail-panel pi-clearing-daily-panel">
                                 <div class="pi-clearing-daily-toolbar">
                                     <label>
@@ -65323,7 +65310,7 @@
             function renderPiClearingTopbarSummary() {
                 const summary = document.getElementById("piClearingTopbarSummary");
                 if (!summary) return;
-                const isActive = isPiClearingView(activeView);
+                const isActive = isPiClearingView(activeView) && activeView !== "pi-clearing-account-page";
                 summary.hidden = !isActive;
                 if (!isActive) return;
                 summary.innerHTML = piClearingTopbarCards()
@@ -102948,7 +102935,7 @@
                 const taskListHeroCard = document.getElementById("taskListHeroCard");
                 if (taskListHeroCard) taskListHeroCard.hidden = isTaskListView;
                 const piClearingTopbarSummary = document.getElementById("piClearingTopbarSummary");
-                if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = !isPiClearingView(activeView);
+                if (piClearingTopbarSummary) piClearingTopbarSummary.hidden = !(isPiClearingView(activeView) && activeView !== "pi-clearing-account-page");
                 renderPiClearingTopbarSummary();
                 renderBankStatementContinuityTopbar();
                 const disconnectButton = document.getElementById("disconnectXeroButton");
