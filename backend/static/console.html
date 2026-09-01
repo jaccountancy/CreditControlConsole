@@ -36433,6 +36433,64 @@
                 font-weight: 700;
                 letter-spacing: 0.01em;
             }
+            .pi-clearing-daily-panel {
+                margin-top: 14px;
+                display: grid;
+                gap: 12px;
+            }
+            .pi-clearing-daily-toolbar {
+                display: flex;
+                align-items: flex-end;
+                justify-content: space-between;
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+            .pi-clearing-daily-toolbar label {
+                display: grid;
+                gap: 6px;
+                min-width: 260px;
+            }
+            .pi-clearing-daily-status {
+                font-size: 0.9rem;
+                color: var(--muted);
+                font-weight: 600;
+            }
+            .pi-clearing-day-tabs {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+                max-height: 126px;
+                overflow: auto;
+                padding: 6px 2px;
+                border-top: 1px solid var(--line);
+                border-bottom: 1px solid var(--line);
+            }
+            .pi-clearing-day-tab {
+                border: 1px solid rgba(76, 120, 197, 0.25);
+                background: rgba(255, 255, 255, 0.9);
+                border-radius: 999px;
+                padding: 7px 12px;
+                font-size: 0.8rem;
+                font-weight: 700;
+                color: #365072;
+                cursor: pointer;
+            }
+            .pi-clearing-day-tab.is-active {
+                background: linear-gradient(135deg, rgba(52, 132, 197, 0.2), rgba(67, 184, 128, 0.2));
+                border-color: rgba(52, 132, 197, 0.55);
+                color: #14386f;
+            }
+            .pi-clearing-day-tab.is-imbalance {
+                border-color: rgba(191, 88, 63, 0.4);
+                color: #8c2f1b;
+                background: rgba(255, 241, 236, 0.92);
+            }
+            .pi-clearing-day-tab.is-balanced {
+                border-color: rgba(47, 146, 92, 0.34);
+                color: #1f6f49;
+                background: rgba(235, 252, 244, 0.9);
+            }
             @keyframes pi-clearing-enter {
                 from { opacity: 0; transform: translateY(6px); }
                 to { opacity: 1; transform: translateY(0); }
@@ -37891,6 +37949,10 @@
                                 <span class="app-nav-copy"><strong>Practice Manager</strong><span>Renewals and assurance</span></span>
                             </button>
                             <div class="app-nav-submenu" role="group" aria-label="Practice manager sections">
+                                <a class="app-nav-button" href="#credit-control-pi-clearing-account-page" data-app-nav="pi-clearing-account-page">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M6 5h12v14H6z"></path><path d="M9 9h6"></path><path d="M9 13h4"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>PI Clearing account</strong><span>Daily debit vs credit checks</span></span>
+                                </a>
                                 <a class="app-nav-button" href="#credit-control-ignition" data-app-nav="ignition">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Renewals</strong><span>Proposal workspace</span></span>
@@ -39874,13 +39936,55 @@
                                 <div>
                                     <p class="eyebrow">Practice Manager</p>
                                     <h3>PI Clearing account</h3>
-                                    <p class="detail-meta">Dedicated workspace page.</p>
+                                    <p class="detail-meta">Daily balancing view for the PI Clearing nominal account in Jaccountancy Xero.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="piClearingDailyRefreshButton" type="button">Refresh data</button>
+                                    <button class="ghost-button" id="piClearingDailyRunButton" type="button">Run fresh Xero check</button>
+                                    <button class="primary-button" id="piClearingDailyWorkflowButton" type="button">Open full workflow</button>
                                 </div>
                             </div>
-                            <div class="empty-state">
-                                <p class="eyebrow">Blank Page</p>
-                                <h4>PI Clearing account</h4>
-                                <p>This page is ready for PI Clearing account content.</p>
+                            <div class="summary-grid pi-clearing-kpi-grid" id="piClearingDailySummaryGrid"></div>
+                            <section class="detail-panel pi-clearing-daily-panel">
+                                <div class="pi-clearing-daily-toolbar">
+                                    <label>
+                                        <span class="eyebrow">Batch run</span>
+                                        <select id="piClearingDailyRunSelect" aria-label="Select PI clearing run"></select>
+                                    </label>
+                                    <span class="pi-clearing-daily-status" id="piClearingDailyStatusText">No PI batch loaded yet.</span>
+                                </div>
+                                <div class="pi-clearing-day-tabs" id="piClearingDailyTabs"></div>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="PI clearing daily balancing table">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Xero debits</th>
+                                                <th>Xero credits</th>
+                                                <th>Difference</th>
+                                                <th>Status</th>
+                                                <th>Rows</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="piClearingDailyBalanceBody"></tbody>
+                                    </table>
+                                </div>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="PI clearing nominal transactions for selected day">
+                                        <thead>
+                                            <tr>
+                                                <th>Payment date</th>
+                                                <th>Payment id</th>
+                                                <th>Client</th>
+                                                <th>Source</th>
+                                                <th>Description</th>
+                                                <th>Debit</th>
+                                                <th>Credit</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="piClearingDailyTransactionsBody"></tbody>
+                                    </table>
+                                </div>
                             </div>
                         </section>
                     </section>
@@ -48880,8 +48984,6 @@
                 "payroll-headcount",
                 "submitted-employee-forms",
                 "client-call-stats",
-                "pi-clearing-account",
-                "pi-clearing-account-page",
                 "outstanding-esigns",
                 "create-esig-request",
                 "completed-esigns",
@@ -49059,6 +49161,7 @@
             let piClearingStep1AiRunning = false;
             let piClearingStep1AiResult = null;
             let piClearingStep1AiRowKey = "";
+            let piClearingDailyActiveDay = "";
             const piClearingStep1AiCache = new Map();
             let piClearingFixDifferenceModalOpen = false;
             let piClearingFixDifferenceMatch = null;
@@ -55921,8 +56024,8 @@
                 setElementVisible(document.getElementById("payrollHeadcountScreen"), activeView === "payroll-headcount");
                 setElementVisible(document.getElementById("submittedEmployeeFormsScreen"), activeView === "submitted-employee-forms");
                 setElementVisible(document.getElementById("clientCallStatsScreen"), activeView === "client-call-stats");
-                setElementVisible(document.getElementById("piClearingAccountScreen"), isPiClearingView(activeView));
-                setElementVisible(document.getElementById("piClearingAccountPageScreen"), false);
+                setElementVisible(document.getElementById("piClearingAccountScreen"), activeView === "pi-clearing-account");
+                setElementVisible(document.getElementById("piClearingAccountPageScreen"), activeView === "pi-clearing-account-page");
                 setElementVisible(document.getElementById("identityVerificationScreen"), activeView === "identity-verification");
                 setElementVisible(document.getElementById("vaultScreen"), activeView === "vault");
                 const isClientRegisterMainPageOpen = !!(companiesHouseSettings?.authRegisterClientPage?.open);
@@ -65804,6 +65907,247 @@
                 renderPiClearingAccountScreen();
             }
 
+            function piClearingDailyRowsFromRun(run = {}) {
+                const summary = run?.summary && typeof run.summary === "object" ? run.summary : {};
+                const dayEvidence = Array.isArray(summary?.dayEvidence) ? summary.dayEvidence : [];
+                const fromEvidence = dayEvidence.map((row) => {
+                    const day = String(row?.day || "").trim().slice(0, 10);
+                    const debitTotal = Number(row?.xeroDebitTotal || 0);
+                    const creditTotal = Number(row?.xeroCreditTotal || 0);
+                    const difference = debitTotal - creditTotal;
+                    const xeroCount = Number(row?.xeroCount || 0);
+                    const hasActivity = xeroCount > 0 || Math.abs(debitTotal) > 0.005 || Math.abs(creditTotal) > 0.005;
+                    const balanced = Math.abs(difference) <= 0.01;
+                    return {
+                        day,
+                        debitTotal,
+                        creditTotal,
+                        difference,
+                        xeroCount,
+                        status: hasActivity ? (balanced ? "balanced" : "action_needed") : "no_activity_confirmed",
+                    };
+                }).filter((row) => row.day);
+                if (fromEvidence.length) {
+                    return fromEvidence.sort((left, right) => String(left.day || "").localeCompare(String(right.day || "")));
+                }
+                const dailyBalance = summary?.dailyBalance && typeof summary.dailyBalance === "object" ? summary.dailyBalance : {};
+                const days = Array.isArray(dailyBalance?.days) ? dailyBalance.days : [];
+                return days.map((row) => {
+                    const day = String(row?.date || "").trim().slice(0, 10);
+                    const debitTotal = Number(row?.debitTotal || 0);
+                    const creditTotal = Number(row?.creditTotal || 0);
+                    const difference = debitTotal - creditTotal;
+                    const xeroCount = Number(row?.xeroCount || 0);
+                    const hasActivity = xeroCount > 0 || Math.abs(debitTotal) > 0.005 || Math.abs(creditTotal) > 0.005;
+                    return {
+                        day,
+                        debitTotal,
+                        creditTotal,
+                        difference,
+                        xeroCount,
+                        status: hasActivity ? (Math.abs(difference) <= 0.01 ? "balanced" : "action_needed") : "no_activity_confirmed",
+                    };
+                }).filter((row) => row.day).sort((left, right) => String(left.day || "").localeCompare(String(right.day || "")));
+            }
+
+            function piClearingDailyStatusLabel(statusValue = "") {
+                const status = String(statusValue || "").trim().toLowerCase();
+                if (status === "balanced") return "Balanced";
+                if (status === "action_needed") return "Imbalance";
+                return "No activity";
+            }
+
+            function piClearingDailyStatusTone(statusValue = "") {
+                const status = String(statusValue || "").trim().toLowerCase();
+                if (status === "balanced") return "is-success";
+                if (status === "action_needed") return "is-warning";
+                return "is-open";
+            }
+
+            function renderPiClearingAccountPageScreen() {
+                const screen = document.getElementById("piClearingAccountPageScreen");
+                if (!screen) return;
+                const summaryGrid = document.getElementById("piClearingDailySummaryGrid");
+                const runSelect = document.getElementById("piClearingDailyRunSelect");
+                const statusText = document.getElementById("piClearingDailyStatusText");
+                const dayTabs = document.getElementById("piClearingDailyTabs");
+                const dailyBody = document.getElementById("piClearingDailyBalanceBody");
+                const transactionBody = document.getElementById("piClearingDailyTransactionsBody");
+                const refreshButton = document.getElementById("piClearingDailyRefreshButton");
+                const runButton = document.getElementById("piClearingDailyRunButton");
+                const workflowButton = document.getElementById("piClearingDailyWorkflowButton");
+
+                if (activeView === "pi-clearing-account-page" && !piClearingHydrated && !piClearingLoading) {
+                    loadPiClearingAccount();
+                }
+
+                if (refreshButton && refreshButton.dataset.piWired !== "true") {
+                    refreshButton.dataset.piWired = "true";
+                    refreshButton.addEventListener("click", async () => {
+                        await loadPiClearingAccount(true);
+                        renderPiClearingAccountPageScreen();
+                    });
+                }
+                if (runButton && runButton.dataset.piWired !== "true") {
+                    runButton.dataset.piWired = "true";
+                    runButton.addEventListener("click", () => {
+                        runPiClearingWorkflow({
+                            refreshXero: true,
+                            refreshIgnition: false,
+                            includeIgnition: false,
+                            targetStep: 1,
+                        });
+                    });
+                }
+                if (workflowButton && workflowButton.dataset.piWired !== "true") {
+                    workflowButton.dataset.piWired = "true";
+                    workflowButton.addEventListener("click", () => {
+                        handleAppNavigation("pi-clearing-account");
+                    });
+                }
+
+                const runs = Array.isArray(piClearingRuns) ? [...piClearingRuns] : [];
+                const selectedRun = runs.find((item) => String(item?.id || "") === String(piClearingSelectedRunId || "")) || runs[0] || null;
+                if (!piClearingSelectedRunId && selectedRun?.id) {
+                    piClearingSelectedRunId = String(selectedRun.id || "");
+                }
+
+                if (runSelect) {
+                    runSelect.innerHTML = runs.length
+                        ? runs.map((run) => {
+                            const runId = String(run?.id || "");
+                            const range = piClearingRunRangeLabel(run);
+                            const status = String(run?.status || "unknown").toUpperCase();
+                            return `<option value="${escapeHTML(runId)}">${escapeHTML(range)} · ${escapeHTML(status)}</option>`;
+                        }).join("")
+                        : `<option value="">No PI clearing runs yet</option>`;
+                    runSelect.value = String(piClearingSelectedRunId || selectedRun?.id || "");
+                    if (runSelect.dataset.piWired !== "true") {
+                        runSelect.dataset.piWired = "true";
+                        runSelect.addEventListener("change", (event) => {
+                            piClearingSelectedRunId = String(event.target?.value || "").trim();
+                            piClearingDailyActiveDay = "";
+                            renderPiClearingAccountPageScreen();
+                        });
+                    }
+                }
+
+                const run = runs.find((item) => String(item?.id || "") === String(piClearingSelectedRunId || "")) || selectedRun;
+                const runRows = Array.isArray(run?.rows) ? run.rows : [];
+                const dailyRows = piClearingDailyRowsFromRun(run || {});
+                const dayWithIssue = dailyRows.find((row) => String(row?.status || "").toLowerCase() === "action_needed");
+                if (!piClearingDailyActiveDay || !dailyRows.some((row) => row.day === piClearingDailyActiveDay)) {
+                    piClearingDailyActiveDay = String(dayWithIssue?.day || dailyRows[0]?.day || "");
+                }
+
+                const totalDebit = dailyRows.reduce((sum, row) => sum + Number(row?.debitTotal || 0), 0);
+                const totalCredit = dailyRows.reduce((sum, row) => sum + Number(row?.creditTotal || 0), 0);
+                const imbalanceDays = dailyRows.filter((row) => Math.abs(Number(row?.difference || 0)) > 0.01);
+                const balanceDifference = totalDebit - totalCredit;
+                const runStatus = String(run?.status || "").trim().toUpperCase();
+                const accountCode = String(run?.accountCode || state?.postingSettings?.piClearingAccountCode || PI_CLEARING_DEFAULT_ACCOUNT_CODE).trim();
+
+                if (summaryGrid) {
+                    const cards = [
+                        { label: "Nominal code", value: accountCode || "--" },
+                        { label: "Run status", value: runStatus || "--" },
+                        { label: "Days in run", value: formatInteger(dailyRows.length) },
+                        { label: "Imbalance days", value: formatInteger(imbalanceDays.length) },
+                        { label: "Total debits", value: formatCurrency(totalDebit) },
+                        { label: "Total credits", value: formatCurrency(totalCredit) },
+                        { label: "Debit - credit", value: formatCurrency(balanceDifference) },
+                    ];
+                    summaryGrid.innerHTML = cards.map((item) => `
+                        <article class="pi-clearing-kpi">
+                            <strong>${escapeHTML(item.value)}</strong>
+                            <span>${escapeHTML(item.label)}</span>
+                        </article>
+                    `).join("");
+                }
+
+                if (statusText) {
+                    if (!run) {
+                        statusText.textContent = "No PI batch available yet. Run a fresh Xero check to load transactions.";
+                    } else if (!dailyRows.length) {
+                        statusText.textContent = "Selected run has no day rows yet.";
+                    } else {
+                        const dayText = piClearingDailyActiveDay ? formatDate(piClearingDailyActiveDay) : "--";
+                        const imbalanceText = imbalanceDays.length
+                            ? `${formatInteger(imbalanceDays.length)} day(s) do not balance`
+                            : "All days balance";
+                        statusText.textContent = `${dayText} selected. ${imbalanceText}.`;
+                    }
+                }
+
+                if (dayTabs) {
+                    dayTabs.innerHTML = dailyRows.length
+                        ? dailyRows.map((row) => {
+                            const status = String(row?.status || "").toLowerCase();
+                            const toneClass = status === "action_needed"
+                                ? "is-imbalance"
+                                : status === "balanced"
+                                    ? "is-balanced"
+                                    : "";
+                            const activeClass = piClearingDailyActiveDay === row.day ? "is-active" : "";
+                            return `
+                                <button class="pi-clearing-day-tab ${escapeHTML(toneClass)} ${escapeHTML(activeClass)}" type="button" data-pi-clearing-day-tab="${escapeHTML(row.day)}">
+                                    ${escapeHTML(formatDate(row.day))}
+                                </button>
+                            `;
+                        }).join("")
+                        : `<p class="detail-meta">No day tabs available for this run.</p>`;
+                    dayTabs.querySelectorAll("[data-pi-clearing-day-tab]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            piClearingDailyActiveDay = String(button.getAttribute("data-pi-clearing-day-tab") || "").trim();
+                            renderPiClearingAccountPageScreen();
+                        });
+                    });
+                }
+
+                if (dailyBody) {
+                    dailyBody.innerHTML = dailyRows.length
+                        ? dailyRows.map((row) => {
+                            const isActive = piClearingDailyActiveDay === row.day;
+                            const status = String(row?.status || "").trim().toLowerCase();
+                            return `
+                                <tr data-pi-clearing-day-row="${escapeHTML(row.day)}"${isActive ? ` class="is-selected"` : ""}>
+                                    <td>${escapeHTML(formatDate(row.day))}</td>
+                                    <td>${escapeHTML(formatCurrency(Number(row?.debitTotal || 0)))}</td>
+                                    <td>${escapeHTML(formatCurrency(Number(row?.creditTotal || 0)))}</td>
+                                    <td>${escapeHTML(formatCurrency(Number(row?.difference || 0)))}</td>
+                                    <td><span class="ch-pill ${escapeHTML(piClearingDailyStatusTone(status))}">${escapeHTML(piClearingDailyStatusLabel(status))}</span></td>
+                                    <td>${escapeHTML(formatInteger(Number(row?.xeroCount || 0)))}</td>
+                                </tr>
+                            `;
+                        }).join("")
+                        : `<tr><td colspan="6"><p class="detail-meta">No daily balancing rows were generated for this run.</p></td></tr>`;
+                    dailyBody.querySelectorAll("[data-pi-clearing-day-row]").forEach((row) => {
+                        row.addEventListener("click", () => {
+                            piClearingDailyActiveDay = String(row.getAttribute("data-pi-clearing-day-row") || "").trim();
+                            renderPiClearingAccountPageScreen();
+                        });
+                    });
+                }
+
+                const xeroRows = buildPiClearingXeroBreakdown(runRows);
+                const selectedDayRows = xeroRows.filter((row) => String(row?.paidOn || "").slice(0, 10) === String(piClearingDailyActiveDay || ""));
+                if (transactionBody) {
+                    transactionBody.innerHTML = selectedDayRows.length
+                        ? selectedDayRows.map((row) => `
+                            <tr>
+                                <td>${escapeHTML(formatDate(row?.paidOn || ""))}</td>
+                                <td>${escapeHTML(String(row?.paymentId || "--"))}</td>
+                                <td>${escapeHTML(String(row?.clientName || "--"))}</td>
+                                <td>${escapeHTML(String(row?.source || "--"))}</td>
+                                <td>${escapeHTML(String(row?.description || "--"))}</td>
+                                <td>${escapeHTML(formatCurrency(Number(row?.debit || 0)))}</td>
+                                <td>${escapeHTML(formatCurrency(Number(row?.credit || 0)))}</td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="7"><p class="detail-meta">No Xero nominal rows for the selected day.</p></td></tr>`;
+                }
+            }
+
             function renderPiClearingAccountScreen() {
                 const summary = document.getElementById("piClearingAccountSummary");
                 const startButton = document.getElementById("piClearingStartWorkflowButton");
@@ -67320,6 +67664,7 @@
                         await createPiClearingCreditNotes({ rowIds: [rowId], skipConfirmation: true });
                     });
                 }
+                renderPiClearingAccountPageScreen();
             }
 
             function openTaskTrackerScreen() {
@@ -67636,6 +67981,7 @@
             let lastSidebarNavigation = { section: "", at: 0 };
             const creditControlNavSections = new Set(["clients", "contact-archive", "lpcs", "bad-debt"]);
             const practiceManagerNavSections = new Set([
+                "pi-clearing-account-page",
                 "ignition",
                 "juk-equity",
                 "risk-assessments",
@@ -117303,7 +117649,7 @@
                     "submitted-employee-forms": new Set(["renderSubmittedEmployeeFormsScreen"]),
                     "client-call-stats": new Set(["renderClientCallStatsScreen"]),
                     "pi-clearing-account": new Set(["renderPiClearingAccountScreen"]),
-                    "pi-clearing-account-page": new Set(["renderPiClearingAccountScreen"]),
+                    "pi-clearing-account-page": new Set(["renderPiClearingAccountPageScreen"]),
                     "identity-verification": new Set(["renderIdentityVerificationScreen"]),
                     vault: new Set(["renderVaultScreen"]),
                     "nlac-list": new Set(["renderNlacListScreen"]),
@@ -117381,6 +117727,7 @@
                     ["renderSubmittedEmployeeFormsScreen", () => renderSubmittedEmployeeFormsScreen()],
                     ["renderClientCallStatsScreen", () => renderClientCallStatsScreen()],
                     ["renderPiClearingAccountScreen", () => renderPiClearingAccountScreen()],
+                    ["renderPiClearingAccountPageScreen", () => renderPiClearingAccountPageScreen()],
                     ["renderIdentityVerificationScreen", () => renderIdentityVerificationScreen()],
                     ["renderVaultScreen", () => renderVaultScreen()],
                     ["renderNlacListScreen", () => renderNlacListScreen()],
