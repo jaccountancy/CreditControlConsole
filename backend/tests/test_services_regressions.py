@@ -2523,7 +2523,32 @@ class ServicesRegressionTests(unittest.TestCase):
         self.assertLess(is_voided_alter_index, unique_index_create)
         self.assertLess(dedupe_update_index, unique_index_create)
 
-    def test_jays_stats2_pdf_extraction_prefers_openai(self):
+    def test_jays_stats2_pdf_extraction_prefers_local_parser(self):
+        async def _run():
+            messages: list[str] = []
+            with patch.object(
+                services,
+                "_extract_bank_statement_pdf",
+            ) as openai_parser, patch.object(
+                services,
+                "_jays_stats_parse_pdf_transactions_local",
+                return_value=[{
+                    "date": "2026-08-31",
+                    "description": "Debit OPENAI",
+                    "amount": -5.47,
+                    "runningBalance": 296.81,
+                    "source": "pdf-local",
+                }],
+            ):
+                rows = await services._jays_stats2_extract_pdf_rows(b"pdf", "statement.pdf", messages)
+                openai_parser.assert_not_called()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0].get("source"), "pdf-local")
+            self.assertTrue(any("used local PDF parser" in item for item in messages))
+
+        asyncio.run(_run())
+
+    def test_jays_stats2_pdf_extraction_falls_back_to_openai_when_local_parser_empty(self):
         async def _run():
             messages: list[str] = []
             with patch.object(
@@ -2539,38 +2564,16 @@ class ServicesRegressionTests(unittest.TestCase):
                         }
                     ]
                 },
-            ), patch.object(services, "_jays_stats_parse_pdf_transactions_local") as local_parser:
-                rows = await services._jays_stats2_extract_pdf_rows(b"pdf", "statement.pdf", messages)
-                local_parser.assert_not_called()
-            self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0].get("source"), "pdf-openai")
-            self.assertTrue(any("used OpenAI extraction" in item for item in messages))
-
-        asyncio.run(_run())
-
-    def test_jays_stats2_pdf_extraction_falls_back_to_local_when_openai_unavailable(self):
-        async def _run():
-            messages: list[str] = []
-            with patch.object(
-                services,
-                "_extract_bank_statement_pdf",
-                side_effect=services.HTTPException(status_code=400, detail="OpenAI extraction is not configured."),
             ), patch.object(
                 services,
                 "_jays_stats_parse_pdf_transactions_local",
-                return_value=[{
-                    "date": "2026-08-31",
-                    "description": "Debit OPENAI",
-                    "amount": -5.47,
-                    "runningBalance": 296.81,
-                    "source": "pdf-local",
-                }],
+                return_value=[],
             ):
                 rows = await services._jays_stats2_extract_pdf_rows(b"pdf", "statement.pdf", messages)
             self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0].get("source"), "pdf-local")
-            self.assertTrue(any("OpenAI extraction unavailable" in item for item in messages))
-            self.assertTrue(any("used local PDF parser fallback" in item for item in messages))
+            self.assertEqual(rows[0].get("source"), "pdf-openai")
+            self.assertTrue(any("local PDF parser returned no rows" in item for item in messages))
+            self.assertTrue(any("used OpenAI extraction fallback" in item for item in messages))
 
         asyncio.run(_run())
 
