@@ -117796,16 +117796,22 @@
             }
 
             function showToast(message, type = "info", action = null, duration = null, options = {}) {
-                const signature = `${type}|${String(message || "")}`;
+                const normalizedType = String(type || "info").trim().toLowerCase() || "info";
+                const suppressInfoToasts = options?.suppressInfoToasts !== false;
+                if (suppressInfoToasts && (normalizedType === "info" || normalizedType === "notice" || normalizedType === "neutral")) {
+                    return;
+                }
+
+                const signature = `${normalizedType}|${String(message || "")}`;
                 const now = Date.now();
                 if (signature === lastToastSignature && now - lastToastShownAt < UI_TOAST_DEDUPE_WINDOW_MS) return;
                 lastToastSignature = signature;
                 lastToastShownAt = now;
                 const context = String(options?.context || "").trim().toLowerCase();
                 const toastTitle = String(options?.title || "").trim()
-                    || (type === "error"
+                    || (normalizedType === "error"
                         ? "Action needed"
-                        : type === "success"
+                        : normalizedType === "success"
                             ? "Completed"
                             : context === "sync"
                                 ? "Sync update"
@@ -117814,14 +117820,14 @@
                 const toastIcon = String(options?.icon || "").trim()
                     || (context === "sync"
                         ? "↻"
-                        : type === "error"
+                        : normalizedType === "error"
                             ? "!"
-                            : type === "success"
+                            : normalizedType === "success"
                                 ? "✓"
                                 : "i");
                 pushSystemActivity({
-                    type,
-                    label: type === "error" ? "Error message" : type === "success" ? "Completed" : "Notification",
+                    type: normalizedType,
+                    label: normalizedType === "error" ? "Error message" : normalizedType === "success" ? "Completed" : "Notification",
                     message,
                     detail: action?.label ? `Action available: ${action.label}` : viewDisplayLabel(activeView)
                 });
@@ -117830,8 +117836,12 @@
                 if (document.body && stack.parentElement !== document.body) {
                     document.body.appendChild(stack);
                 }
+                // Keep one active toast only to avoid stacked notification noise.
+                while (stack.firstElementChild) {
+                    dismissToastElement(stack.firstElementChild, { immediate: true });
+                }
                 const toast = document.createElement("div");
-                toast.className = `toast-message ${type}`;
+                toast.className = `toast-message ${normalizedType}`;
                 if (context === "sync") toast.classList.add("is-sync");
 
                 const icon = document.createElement("span");
@@ -117910,7 +117920,7 @@
                     ? requestedDuration
                     : action
                         ? ACTION_TOAST_DURATION_MS
-                        : type === "error"
+                        : normalizedType === "error"
                             ? ERROR_TOAST_DURATION_MS
                             : TOAST_DURATION_MS;
                 toast.style.setProperty("--toast-duration-ms", `${durationMs}ms`);
