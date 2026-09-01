@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import BackgroundTasks, Body, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.encoders import jsonable_encoder
@@ -5276,32 +5276,32 @@ async def api_jays_stats2_uploads_commit(
     return {"status": "ok", **await jays_stats2_commit_transactions(user, payload if isinstance(payload, dict) else {})}
 
 
-@app.post("/api/jays-stats-2/transactions/{transaction_id}/category")
+@app.post("/api/jays-stats-2/transactions/{transaction_id:uuid}/category")
 async def api_jays_stats2_set_category(
-    transaction_id: str,
+    transaction_id: UUID,
     request: Request,
     user: dict = Depends(require_panel_user),
 ):
     payload = await request.json()
-    return {"status": "ok", **await jays_stats2_update_transaction_category(user, transaction_id, payload if isinstance(payload, dict) else {})}
+    return {"status": "ok", **await jays_stats2_update_transaction_category(user, str(transaction_id), payload if isinstance(payload, dict) else {})}
 
 
-@app.post("/api/jays-stats-2/transactions/{transaction_id}")
+@app.post("/api/jays-stats-2/transactions/{transaction_id:uuid}")
 async def api_jays_stats2_update_transaction_fields(
-    transaction_id: str,
+    transaction_id: UUID,
     request: Request,
     user: dict = Depends(require_panel_user),
 ):
     payload = await request.json()
-    return {"status": "ok", **await jays_stats2_update_transaction(user, transaction_id, payload if isinstance(payload, dict) else {})}
+    return {"status": "ok", **await jays_stats2_update_transaction(user, str(transaction_id), payload if isinstance(payload, dict) else {})}
 
 
-@app.post("/api/jays-stats-2/transactions/{transaction_id}/void")
+@app.post("/api/jays-stats-2/transactions/{transaction_id:uuid}/void")
 async def api_jays_stats2_void_transaction_record(
-    transaction_id: str,
+    transaction_id: UUID,
     user: dict = Depends(require_panel_user),
 ):
-    return {"status": "ok", **await jays_stats2_void_transaction(user, transaction_id)}
+    return {"status": "ok", **await jays_stats2_void_transaction(user, str(transaction_id))}
 
 
 @app.post("/api/jays-stats-2/transactions/bulk")
