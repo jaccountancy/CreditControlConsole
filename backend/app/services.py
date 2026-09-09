@@ -14112,6 +14112,37 @@ def _xero_rate_limit_retry_seconds(exc: Exception) -> int | None:
         return 0
 
 
+def _is_xero_rate_limit_error_message(message: str) -> bool:
+    text = str(message or "").strip().lower()
+    if not text:
+        return False
+    return (
+        "quota reached" in text
+        or "rate limit" in text
+        or "too many requests" in text
+        or "retry-after" in text
+    )
+
+
+def _is_xero_rate_limit_exception(exc: Exception) -> bool:
+    if not isinstance(exc, HTTPException):
+        return _is_xero_rate_limit_error_message(str(exc))
+    detail = exc.detail
+    if isinstance(detail, dict):
+        status_code = detail.get("status_code")
+        try:
+            if int(status_code) == status.HTTP_429_TOO_MANY_REQUESTS:
+                return True
+        except (TypeError, ValueError):
+            pass
+        if detail.get("retry_after_seconds") is not None or detail.get("retry_after") is not None:
+            return True
+        if _is_xero_rate_limit_error_message(detail.get("message") or ""):
+            return True
+        return _is_xero_rate_limit_error_message(str(detail))
+    return _is_xero_rate_limit_error_message(str(detail))
+
+
 def _active_xero_rate_limit(user_id: str) -> dict | None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -53994,6 +54025,42 @@ async def sync_invoice_workflow_note_to_xero(invoice_id: str, user: dict, body: 
         }
 
     note_body = _invoice_referenced_note_body(_with_jenius_signature(body), invoice.get("invoice_number"))
+    active_rate_limit = _active_xero_rate_limit(user["id"])
+    if active_rate_limit is not None:
+        retry_after_seconds = int(active_rate_limit.get("retry_after_seconds") or 0)
+        paused_message = (
+            f"Xero API quota is currently paused for about {_format_wait_seconds(retry_after_seconds)}. "
+            "Local status saved; Xero history note skipped for now."
+        )
+        record_audit_event(
+            "invoice",
+            invoice_id,
+            f"{event_type}.deferred",
+            {
+                "invoice_number": invoice.get("invoice_number"),
+                "customer_id": str(invoice.get("customer_id")),
+                "customer_name": invoice.get("customer_name"),
+                "xero_invoice_id": invoice.get("xero_invoice_id"),
+                "xero_contact_id": invoice.get("xero_contact_id"),
+                "invoice_note_synced": False,
+                "contact_note_synced": False,
+                "errors": [paused_message],
+                "rate_limit_until": _iso(active_rate_limit.get("rate_limit_until")),
+                "retry_after_seconds": retry_after_seconds,
+            },
+            user["id"],
+        )
+        return {
+            "synced": False,
+            "invoiceNoteSynced": False,
+            "contactNoteSynced": False,
+            "error": paused_message,
+            "deferred": True,
+            "rateLimit": {
+                "retryAfterSeconds": retry_after_seconds,
+                "rateLimitUntil": _iso(active_rate_limit.get("rate_limit_until")) or "",
+            },
+        }
 
     targets = {
         "Invoices": invoice.get("xero_invoice_id"),
@@ -54003,6 +54070,7 @@ async def sync_invoice_workflow_note_to_xero(invoice_id: str, user: dict, body: 
         "Invoices": {"synced": False, "error": ""},
         "Contacts": {"synced": False, "error": ""},
     }
+    hit_rate_limit = False
 
     try:
         connection_row = get_xero_connection_for_user(user["id"])
@@ -54036,14 +54104,25 @@ async def sync_invoice_workflow_note_to_xero(invoice_id: str, user: dict, body: 
         except Exception as exc:
             error = _sync_error_message(exc)
             results[resource]["error"] = error
+            if _is_xero_rate_limit_exception(exc) or _is_xero_rate_limit_error_message(error):
+                hit_rate_limit = True
+                logger.warning(
+                    "Xero rate limit reached while adding workflow history note to %s %s",
+                    resource,
+                    resource_id,
+                )
+                break
             logger.exception("Unable to add Xero workflow history note to %s %s", resource, resource_id)
 
     errors = [result["error"] for result in results.values() if result["error"]]
+    if hit_rate_limit and not results["Contacts"]["error"] and not results["Contacts"]["synced"]:
+        results["Contacts"]["error"] = "Skipped after Xero rate limit was reached."
     synced = results["Invoices"]["synced"] and results["Contacts"]["synced"]
+    outcome = "deferred" if hit_rate_limit else ("synced" if synced else "failed")
     record_audit_event(
         "invoice",
         invoice_id,
-        f"{event_type}.{'synced' if synced else 'failed'}",
+        f"{event_type}.{outcome}",
         {
             "invoice_number": invoice.get("invoice_number"),
             "customer_id": str(invoice.get("customer_id")),
@@ -54061,6 +54140,7 @@ async def sync_invoice_workflow_note_to_xero(invoice_id: str, user: dict, body: 
         "invoiceNoteSynced": results["Invoices"]["synced"],
         "contactNoteSynced": results["Contacts"]["synced"],
         "error": "; ".join(errors),
+        "deferred": hit_rate_limit,
     }
 
 
@@ -58234,25 +58314,59 @@ async def bulk_update_invoice_status(user: dict, invoice_ids: list[str], status_
     note = str(note or "").strip() or "Updated from ledger bulk actions."
     synced = 0
     failed = 0
+    deferred = 0
     errors = []
+    skip_xero_for_remaining = False
+
     for invoice_id in invoice_ids:
         update_control_status(invoice_id, user, status_value, note)
+
+    for invoice_id in invoice_ids:
+        if skip_xero_for_remaining:
+            deferred += 1
+            continue
         try:
             xero_note = await sync_invoice_status_to_xero(invoice_id, user, status_value, note)
             if xero_note.get("synced"):
                 synced += 1
+                continue
+            error_text = str(xero_note.get("error") or "").strip()
+            if xero_note.get("deferred") or _is_xero_rate_limit_error_message(error_text):
+                skip_xero_for_remaining = True
+                deferred += 1
+                if error_text:
+                    errors.append(error_text)
+                continue
+            failed += 1
+            if error_text:
+                errors.append(error_text)
+        except Exception as exc:
+            error_text = _sync_error_message(exc)
+            if _is_xero_rate_limit_exception(exc) or _is_xero_rate_limit_error_message(error_text):
+                skip_xero_for_remaining = True
+                deferred += 1
+                errors.append(error_text)
             else:
                 failed += 1
-                if xero_note.get("error"):
-                    errors.append(xero_note["error"])
-        except Exception as exc:
-            failed += 1
-            errors.append(_sync_error_message(exc))
+                errors.append(error_text)
+
+    if skip_xero_for_remaining:
+        logger.warning(
+            "Bulk status update hit Xero rate limit after %s invoice(s); deferred Xero sync for %s remaining invoice(s).",
+            synced + failed + deferred,
+            deferred,
+        )
+
+    unique_errors: list[str] = []
+    for error in errors:
+        if error and error not in unique_errors:
+            unique_errors.append(error)
     return {
         "updatedCount": len(invoice_ids),
         "xeroSyncedCount": synced,
         "xeroFailedCount": failed,
-        "errors": errors[:5],
+        "xeroDeferredCount": deferred,
+        "errors": unique_errors[:5],
     }
 ME_REPORT_EXCEL_EXTENSIONS = (".xlsx", ".xlsm")
 ME_REPORT_PDF_EXTENSIONS = (".pdf",)
