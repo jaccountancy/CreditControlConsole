@@ -38184,7 +38184,7 @@
                 position: absolute;
                 right: 0;
                 top: calc(100% + 8px);
-                min-width: 180px;
+                min-width: 260px;
                 padding: 8px;
                 border-radius: 12px;
                 border: 1px solid var(--surface-line);
@@ -38193,6 +38193,26 @@
                 display: grid;
                 gap: 4px;
                 z-index: 170;
+            }
+            .saas-user-settings-groups {
+                display: grid;
+                gap: 8px;
+                margin-bottom: 4px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid rgba(3, 85, 129, 0.12);
+            }
+            .saas-user-settings-group {
+                display: grid;
+                gap: 3px;
+            }
+            .saas-user-settings-group-label {
+                margin: 0;
+                color: var(--text-muted);
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                padding: 2px 6px;
             }
             .saas-user-action {
                 border: 0;
@@ -38203,6 +38223,7 @@
                 border-radius: 8px;
                 padding: 8px 10px;
                 cursor: pointer;
+                width: 100%;
             }
             .saas-user-action:hover {
                 background: rgba(0, 117, 201, 0.08);
@@ -38565,10 +38586,6 @@
                                 <button type="button" class="saas-nav-menu-item" data-saas-nav="juk-equity" role="menuitem">JUK Equity</button>
                             </div>
                         </details>
-                        <details class="saas-nav-menu" data-saas-menu="settings">
-                            <summary>Settings</summary>
-                            <div class="saas-nav-menu-panel" id="saasSettingsMenuPanel" role="menu"></div>
-                        </details>
                     </nav>
                     <div class="saas-topbar-utils" aria-label="Workspace actions">
                         <button class="saas-search-trigger" id="saasSearchOpenButton" type="button" aria-label="Open global search" title="Search">
@@ -38585,6 +38602,7 @@
                                 </span>
                             </summary>
                             <div class="saas-user-panel" role="menu">
+                                <div class="saas-user-settings-groups" id="saasUserSettingsGroups"></div>
                                 <button class="saas-user-action" id="saasLogoutButton" type="button" role="menuitem">Log Out</button>
                             </div>
                         </details>
@@ -56052,56 +56070,65 @@
             function buildSaasTopbarMenusFromSidebar() {
                 const appRoot = document.querySelector(".app-sidebar");
                 if (!appRoot) return;
-                const morePanel = document.getElementById("saasMoreMenuPanel");
-                const settingsPanel = document.getElementById("saasSettingsMenuPanel");
-                if (!settingsPanel) return;
+                const userSettingsGroups = document.getElementById("saasUserSettingsGroups");
+                if (!userSettingsGroups) return;
 
-                const topNavKeys = new Set(
-                    [...document.querySelectorAll("[data-saas-nav]")]
-                        .map((node) => String(node.dataset.saasNav || "").trim())
-                        .filter(Boolean)
-                );
-
-                const moreRows = [];
-                appRoot.querySelectorAll("[data-app-nav]").forEach((node) => {
-                    const nav = String(node.dataset.appNav || "").trim();
-                    const label = String(node.querySelector(".app-nav-copy strong")?.textContent || node.textContent || "").trim();
-                    if (!nav || !label) return;
-                    if (topNavKeys.has(nav)) return;
-                    if (removedNavigationViews.has(nav)) return;
-                    moreRows.push({ nav, label });
-                });
-                const dedupMore = new Map();
-                moreRows.forEach((row) => {
-                    if (!dedupMore.has(row.nav)) dedupMore.set(row.nav, row);
-                });
-                settingsPanel.innerHTML = "";
-                if (morePanel) morePanel.innerHTML = "";
-
-                const settingRows = [];
+                const settingRows = new Map();
                 appRoot.querySelectorAll("[data-settings-nav]").forEach((node) => {
                     const section = String(node.dataset.settingsNav || "").trim();
-                    const label = String(node.querySelector(".app-nav-copy strong")?.textContent || node.querySelector(".settings-sidebar-copy strong")?.textContent || node.textContent || "").trim();
-                    if (!section || !label) return;
-                    if (removedSettingsSections.has(section)) return;
-                    settingRows.push({ section, label });
-                });
-                const dedupSettings = new Map();
-                settingRows.forEach((row) => {
-                    if (!dedupSettings.has(row.section)) dedupSettings.set(row.section, row);
+                    const label = String(
+                        node.querySelector(".app-nav-copy strong")?.textContent
+                        || node.querySelector(".settings-sidebar-copy strong")?.textContent
+                        || node.textContent
+                        || ""
+                    ).trim();
+                    const group = String(node.dataset.settingsGroupItem || "").trim();
+                    if (!section || !label || removedSettingsSections.has(section)) return;
+                    if (!settingRows.has(section)) settingRows.set(section, { section, label, group });
                 });
 
-                settingsPanel.innerHTML = [...dedupSettings.values()]
-                    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
-                    .map((row) => `<button type="button" class="saas-nav-menu-item" data-saas-settings="${escapeHTML(row.section)}" role="menuitem">${escapeHTML(row.label)}</button>`)
-                    .join("");
+                const rowBySection = (section, fallbackLabel, fallbackGroup = "technical-settings") => {
+                    const found = settingRows.get(section);
+                    if (found) return found;
+                    if (removedSettingsSections.has(section)) return null;
+                    return { section, label: fallbackLabel, group: fallbackGroup };
+                };
 
-                if (morePanel) {
-                    morePanel.innerHTML = [...dedupMore.values()]
-                        .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
-                        .map((row) => `<button type="button" class="saas-nav-menu-item" data-saas-nav="${escapeHTML(row.nav)}" role="menuitem">${escapeHTML(row.label)}</button>`)
-                        .join("");
-                }
+                const orderedGroups = [
+                    {
+                        label: "Workspace",
+                        items: [
+                            rowBySection("xero-connection", "Xero Link", "connections"),
+                            rowBySection("usage", "Usage", "technical-settings"),
+                        ].filter(Boolean),
+                    },
+                    {
+                        label: "Security",
+                        items: [
+                            rowBySection("security-hardening", "Security", "security-settings"),
+                            rowBySection("security-audit", "Audit", "security-settings"),
+                        ].filter(Boolean),
+                    },
+                    {
+                        label: "Operations",
+                        items: [
+                            rowBySection("developer-log", "Developer Log", "technical-settings"),
+                            { section: "__snackccountancy__", label: "Snackccountancy", href: "/jenius/tools/snackccountancy" },
+                        ],
+                    },
+                ].filter((group) => Array.isArray(group.items) && group.items.length > 0);
+
+                userSettingsGroups.innerHTML = orderedGroups.map((group) => `
+                    <section class="saas-user-settings-group">
+                        <p class="saas-user-settings-group-label">${escapeHTML(group.label)}</p>
+                        ${group.items.map((item) => {
+                            if (item.href) {
+                                return `<button class="saas-user-action" type="button" data-saas-user-href="${escapeHTML(String(item.href || ""))}" role="menuitem">${escapeHTML(String(item.label || ""))}</button>`;
+                            }
+                            return `<button class="saas-user-action" type="button" data-saas-user-settings="${escapeHTML(String(item.section || ""))}" role="menuitem">${escapeHTML(String(item.label || ""))}</button>`;
+                        }).join("")}
+                    </section>
+                `).join("");
             }
 
             function triggerHiddenSidebarControl(action = "") {
@@ -56202,8 +56229,6 @@
                     button.classList.toggle("is-active", isActive);
                     button.setAttribute("aria-current", isActive ? "page" : "false");
                 });
-                const settingsMenu = document.querySelector("[data-saas-menu=\"settings\"]");
-                if (settingsMenu) settingsMenu.classList.toggle("is-active", activeView === "settings");
                 const toolsMenu = document.querySelector("[data-saas-menu=\"tools\"]");
                 if (toolsMenu) toolsMenu.classList.toggle("is-active", active === "tools");
                 const reportingMenu = document.querySelector("[data-saas-menu=\"reporting\"]");
@@ -56254,13 +56279,23 @@
                         openSaasTopNav(navButton.dataset.saasNav || "");
                         return;
                     }
-                    const settingsButton = event.target.closest?.("[data-saas-settings]");
+                    const settingsButton = event.target.closest?.("[data-saas-user-settings]");
                     if (settingsButton) {
                         event.preventDefault();
-                        const section = String(settingsButton.dataset.saasSettings || "").trim();
+                        const section = String(settingsButton.dataset.saasUserSettings || "").trim();
                         openSettingsScreen(section || "settings-home", "settings");
-                        const settingsMenu = settingsButton.closest("details");
-                        if (settingsMenu && settingsMenu.hasAttribute("open")) settingsMenu.removeAttribute("open");
+                        const userMenu = settingsButton.closest("details");
+                        if (userMenu && userMenu.hasAttribute("open")) userMenu.removeAttribute("open");
+                        return;
+                    }
+                    const settingsHrefButton = event.target.closest?.("[data-saas-user-href]");
+                    if (settingsHrefButton) {
+                        event.preventDefault();
+                        const href = String(settingsHrefButton.dataset.saasUserHref || "").trim();
+                        if (!href) return;
+                        window.open(href, "_blank", "noopener");
+                        const userMenu = settingsHrefButton.closest("details");
+                        if (userMenu && userMenu.hasAttribute("open")) userMenu.removeAttribute("open");
                         return;
                     }
                     const utilityButton = event.target.closest?.("[data-saas-utility]");
