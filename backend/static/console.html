@@ -5923,6 +5923,12 @@
             body.is-jays-stats-2-view .ledger-topbar {
                 display: none;
             }
+            body.is-jays-stats-2-view .ledger-shell > section:not(#jaysStats2Screen) {
+                display: none !important;
+            }
+            body.is-jays-stats-2-view .ledger-shell > #jaysStats2Screen {
+                margin-top: 0;
+            }
             .eyebrow {
                 margin: 0 0 4px;
                 font-size: 0.72rem;
@@ -56056,14 +56062,17 @@
                 if (activeView === "jays-stats-2") {
                     const shell = document.querySelector("main.ledger-shell");
                     if (shell) {
-                        shell.querySelectorAll(":scope > section").forEach((section) => {
-                            if (section.id === "jaysStats2Screen") return;
-                            section.hidden = true;
-                            section.style.display = "none";
-                            section.classList.remove("is-screen-visible", "is-screen-entering", "is-screen-leaving");
-                            if (section.__screenHideTimer) {
-                                window.clearTimeout(section.__screenHideTimer);
-                                section.__screenHideTimer = 0;
+                        shell.querySelectorAll(":scope > *").forEach((child) => {
+                            if (!(child instanceof HTMLElement)) return;
+                            if (child.id === "jaysStats2Screen" || child.classList.contains("ledger-topbar")) return;
+                            if (child.tagName === "SECTION" || child.id === "ledgerView" || child.id.endsWith("Screen")) {
+                                child.hidden = true;
+                                child.style.display = "none";
+                                child.classList.remove("is-screen-visible", "is-screen-entering", "is-screen-leaving");
+                                if (child.__screenHideTimer) {
+                                    window.clearTimeout(child.__screenHideTimer);
+                                    child.__screenHideTimer = 0;
+                                }
                             }
                         });
                     }
