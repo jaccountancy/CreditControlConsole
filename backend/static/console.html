@@ -38188,14 +38188,14 @@
                 border-radius: 14px;
                 box-shadow: 0 12px 28px rgba(5, 53, 91, 0.08);
             }
-            .split-view-enabled .ledger-shell {
+            body.split-view-enabled.is-ledger-view .ledger-shell {
                 display: grid;
                 grid-template-columns: minmax(0, 34%) minmax(0, 66%);
                 gap: 14px;
                 align-items: start;
             }
-            .split-view-enabled #ledgerView,
-            .split-view-enabled #clientScreen {
+            body.split-view-enabled.is-ledger-view #ledgerView,
+            body.split-view-enabled.is-ledger-view #clientScreen {
                 margin: 0;
                 width: 100%;
             }
@@ -38238,7 +38238,7 @@
                 .ops-panels {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
-                .split-view-enabled .ledger-shell {
+                body.split-view-enabled.is-ledger-view .ledger-shell {
                     display: block;
                 }
                 .context-drawer {
@@ -38312,9 +38312,8 @@
                         <strong>Jenius</strong>
                     </div>
                     <nav class="saas-topbar-nav" aria-label="Primary">
-                        <button type="button" data-saas-nav="home">Home</button>
-                        <button type="button" data-saas-nav="clients">Debtors</button>
-                        <button type="button" data-saas-nav="contact-archive">Contact Archive</button>
+                        <button type="button" data-saas-nav="home">Credit Control</button>
+                        <button type="button" data-saas-nav="cashflow">Cashflow</button>
                         <button type="button" data-saas-nav="lpcs">LPCs</button>
                         <button type="button" data-saas-nav="bad-debt">Bad Debt</button>
                         <button type="button" data-saas-nav="jashflow">Jashflow</button>
@@ -38324,24 +38323,13 @@
                             <summary>Settings</summary>
                             <div class="saas-nav-menu-panel" id="saasSettingsMenuPanel" role="menu"></div>
                         </details>
-                        <details class="saas-nav-menu" data-saas-menu="more">
-                            <summary>More</summary>
-                            <div class="saas-nav-menu-panel" id="saasMoreMenuPanel" role="menu"></div>
-                        </details>
                     </nav>
                     <div class="saas-topbar-utils" aria-label="Workspace actions">
-                        <button type="button" class="saas-topbar-util" data-saas-utility="notifications">Notifications</button>
-                        <button type="button" class="saas-topbar-util" data-saas-utility="notify">Notify</button>
-                        <button type="button" class="saas-topbar-util" data-saas-utility="search-menu">Menu search</button>
                     </div>
                     <div class="saas-search-wrap">
                         <input class="saas-search-input" id="saasGlobalSearchInput" type="search" placeholder="Search clients, invoices, workspaces, reports..." autocomplete="off" aria-label="Global search">
                         <div class="saas-search-results" id="saasGlobalSearchResults" hidden></div>
                     </div>
-                    <label class="saas-split-toggle" title="Split view">
-                        <input id="saasSplitViewToggle" type="checkbox" checked>
-                        <span>Split view</span>
-                    </label>
                 </header>
                 <aside class="context-drawer" id="saasContextDrawer" hidden></aside>
                 <aside class="app-sidebar" aria-label="Main navigation">
@@ -48314,6 +48302,10 @@
                             </aside>
                         </div>
                     </section>
+
+                    <section class="detail-card" id="jaysStats2Screen" hidden>
+                        <div id="jaysStats2Panel"></div>
+                    </section>
                 </main>
                 </div>
                 </div>
@@ -49341,6 +49333,7 @@
                 "client-call-stats",
                 "risk-assessments",
                 "ignition",
+                "contact-archive",
                 "jays-stats",
                 "jays-stats-2",
                 "outstanding-esigns",
@@ -49889,6 +49882,7 @@
                 ledger: "Credit Control",
                 client: "Client",
                 insights: "Insights",
+                cashflow: "Cashflow",
                 notifications: "Notifications",
                 "late-charges": "Late Payment Charges",
                 "bad-debt": "Bad Debt",
@@ -49940,6 +49934,7 @@
                 ledger: "Work the credit-control ledger, prioritise overdue accounts, and open client recovery actions.",
                 client: "Review invoices, notes, payment plans, letters, attachments, and recovery history for this client.",
                 insights: "Home dashboard for performance signals, risk trends, cash movement, and operational priorities.",
+                cashflow: "Track daily cash collection, import statement credits, review AI categorisation, and monitor month-end projections.",
                 notifications: "View system alerts, assistant updates, and recent operational notifications in one place.",
                 "late-charges": "Review overdue invoices that may qualify for late payment charges before posting them.",
                 "bad-debt": "Assess accounts for write-off, prepare bad debt actions, and track the decision trail.",
@@ -55826,6 +55821,7 @@
 
             function activeNavForView() {
                 if (activeView === "insights") return "home";
+                if (activeView === "cashflow" || activeView === "jays-stats" || activeView === "jays-stats-2") return "cashflow";
                 if (activeView === "notifications") return "notifications";
                 if (activeView === "late-charges") return "lpcs";
                 if (activeView === "bad-debt") return "bad-debt";
@@ -55878,26 +55874,17 @@
             }
 
             function splitViewEnabled() {
-                return document.body.classList.contains("split-view-enabled");
+                return false;
             }
 
             function setSplitViewEnabled(enabled, persist = true) {
-                const next = Boolean(enabled);
-                document.body.classList.toggle("split-view-enabled", next);
-                const toggle = document.getElementById("saasSplitViewToggle");
-                if (toggle) toggle.checked = next;
-                if (persist) {
-                    try {
-                        window.localStorage.setItem("jenius_split_view", next ? "1" : "0");
-                    } catch (error) {
-                        console.warn("Unable to persist split view setting", error);
-                    }
-                }
+                document.body.classList.remove("split-view-enabled");
             }
 
             function saasNavForActiveView() {
                 if (activeView === "insights") return "home";
-                if (activeView === "ledger" || activeView === "client") return "clients";
+                if (activeView === "ledger" || activeView === "client") return "home";
+                if (activeView === "cashflow" || activeView === "jays-stats" || activeView === "jays-stats-2") return "cashflow";
                 if (activeView === "contact-archive") return "contact-archive";
                 if (activeView === "late-charges") return "lpcs";
                 if (activeView === "bad-debt") return "bad-debt";
@@ -55910,7 +55897,8 @@
             function openSaasTopNav(section = "") {
                 const target = String(section || "").trim();
                 if (target === "home") return handleAppNavigation("home");
-                if (target === "clients") return handleAppNavigation("clients");
+                if (target === "clients") return handleAppNavigation("home");
+                if (target === "cashflow") return handleAppNavigation("cashflow");
                 if (target === "lpcs") return handleAppNavigation("lpcs");
                 if (target === "contact-archive") return handleAppNavigation("contact-archive");
                 if (target === "bad-debt") return handleAppNavigation("bad-debt");
@@ -55925,7 +55913,7 @@
                 if (!appRoot) return;
                 const morePanel = document.getElementById("saasMoreMenuPanel");
                 const settingsPanel = document.getElementById("saasSettingsMenuPanel");
-                if (!morePanel || !settingsPanel) return;
+                if (!settingsPanel) return;
 
                 const topNavKeys = new Set(
                     [...document.querySelectorAll("[data-saas-nav]")]
@@ -55947,7 +55935,7 @@
                     if (!dedupMore.has(row.nav)) dedupMore.set(row.nav, row);
                 });
                 settingsPanel.innerHTML = "";
-                morePanel.innerHTML = "";
+                if (morePanel) morePanel.innerHTML = "";
 
                 const settingRows = [];
                 appRoot.querySelectorAll("[data-settings-nav]").forEach((node) => {
@@ -55967,10 +55955,12 @@
                     .map((row) => `<button type="button" class="saas-nav-menu-item" data-saas-settings="${escapeHTML(row.section)}" role="menuitem">${escapeHTML(row.label)}</button>`)
                     .join("");
 
-                morePanel.innerHTML = [...dedupMore.values()]
-                    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
-                    .map((row) => `<button type="button" class="saas-nav-menu-item" data-saas-nav="${escapeHTML(row.nav)}" role="menuitem">${escapeHTML(row.label)}</button>`)
-                    .join("");
+                if (morePanel) {
+                    morePanel.innerHTML = [...dedupMore.values()]
+                        .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
+                        .map((row) => `<button type="button" class="saas-nav-menu-item" data-saas-nav="${escapeHTML(row.nav)}" role="menuitem">${escapeHTML(row.label)}</button>`)
+                        .join("");
+                }
             }
 
             function triggerHiddenSidebarControl(action = "") {
@@ -55989,8 +55979,8 @@
             function globalSearchCatalog() {
                 const customers = Array.isArray(state.customers) ? state.customers : [];
                 const sectionRows = [
-                    { label: "Home dashboard", detail: "Operational dashboard", nav: "home" },
-                    { label: "Clients", detail: "Debtors table and workspace", nav: "clients" },
+                    { label: "Credit Control", detail: "Debtors table and workspace", nav: "home" },
+                    { label: "Cashflow", detail: "Daily collections, imports, and projections", nav: "cashflow" },
                     { label: "Reports", detail: "ME Reports and outputs", nav: "me-report" },
                 ];
                 const clientRows = customers.map((client) => {
@@ -56086,20 +56076,9 @@
 
             function wireSaasShell() {
                 buildSaasTopbarMenusFromSidebar();
-                try {
-                    const persisted = window.localStorage.getItem("jenius_split_view");
-                    if (persisted === "0") setSplitViewEnabled(false, false);
-                    else setSplitViewEnabled(true, false);
-                } catch (error) {
-                    setSplitViewEnabled(true, false);
-                }
+                setSplitViewEnabled(false, false);
                 const input = document.getElementById("saasGlobalSearchInput");
                 const panel = document.getElementById("saasGlobalSearchResults");
-                const splitToggle = document.getElementById("saasSplitViewToggle");
-                splitToggle?.addEventListener("change", (event) => {
-                    setSplitViewEnabled(Boolean(event.target.checked));
-                    renderAll();
-                });
                 input?.addEventListener("input", renderGlobalSearchResults);
                 input?.addEventListener("focus", renderGlobalSearchResults);
                 input?.addEventListener("keydown", (event) => {
@@ -56650,12 +56629,13 @@
 
             function syncActiveViewShell() {
                 if (activeView === "jays-stats" || activeView === "jays-stats-2") {
-                    activeView = "ledger";
+                    activeView = "cashflow";
                 }
                 const splitMode = splitViewEnabled();
                 const splitClientMode = splitMode && (activeView === "ledger" || activeView === "client");
                 setElementVisible(document.getElementById("ledgerView"), activeView === "ledger" || splitClientMode);
                 setElementVisible(document.getElementById("clientScreen"), activeView === "client" || splitClientMode);
+                setElementVisible(document.getElementById("jaysStats2Screen"), activeView === "cashflow");
                 setElementVisible(document.getElementById("settingsScreen"), activeView === "settings");
                 setElementVisible(document.getElementById("insightsScreen"), activeView === "insights");
                 setElementVisible(document.getElementById("notificationsScreen"), activeView === "notifications");
@@ -56709,10 +56689,11 @@
                 document.body.classList.toggle("client-sidebar-mode", activeView === "client" && !splitMode);
                 document.body.classList.toggle("client-register-sidebar-mode", activeView === "client-auth-register" && isClientRegisterMainPageOpen);
                 document.body.classList.toggle("is-insights-view", activeView === "insights");
+                document.body.classList.toggle("is-jays-stats-2-view", activeView === "cashflow");
                 document.body.classList.toggle("is-submitted-employee-forms-view", activeView === "submitted-employee-forms");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
                 document.body.classList.toggle("is-task-bookkeeping-workflow-view", activeView === "task-bookkeeping-workflow");
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "pi-clearing-account", "pi-clearing-account-page", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "contact-archive", "risk-assessments", "confirmation-statements", "client-auth-register", "nlac-list", "add-new-client", "outstanding-esigns", "create-esig-request", "completed-esigns", "sa100-prep", "ye-prep", "vat-return-prepare", "task-list", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "tasks", "code-breaker", "micro-analyzer", "identity-verification", "vault", "company-secretarial", "company-secreterial", "new-formations", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "supplier-payments", "me-report", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "pi-clearing-account", "pi-clearing-account-page", "cashflow", "settings", "insights", "notifications"].includes(activeView));
                 syncClientRegisterSidebarDocking();
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
@@ -68468,9 +68449,10 @@
 
             function navigateApp(section) {
                 if (removedNavigationViews.has(String(section || "").trim())) return openLedgerSection("clients");
-                if (section === "home") return openInsightsScreen();
+                if (section === "home") return openLedgerSection("clients");
                 if (section === "notifications") return openNotificationsScreen();
                 if (section === "clients") return openLedgerSection("clients");
+                if (section === "cashflow") return openCashflowScreen();
                 if (section === "contact-archive") return openContactArchiveScreen();
                 if (section === "lpcs") return openLateChargesScreen();
                 if (section === "bad-debt") return openBadDebtScreen();
@@ -68758,6 +68740,7 @@
                 home: "credit-control-home",
                 notifications: "credit-control-notifications",
                 clients: "credit-control-clients",
+                cashflow: "credit-control-cashflow",
                 "contact-archive": "credit-control-contact-archive",
                 lpcs: "credit-control-lpcs",
                 "bad-debt": "credit-control-bad-debt",
@@ -89148,14 +89131,18 @@
                 openJaysStats2Screen();
             }
 
-            function openJaysStats2Screen() {
-                activeView = "jays-stats-2";
+            function openCashflowScreen() {
+                activeView = "cashflow";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
                 renderAll();
                 loadJaysStats2({ silent: true });
                 scrollConsoleToTop();
+            }
+
+            function openJaysStats2Screen() {
+                openCashflowScreen();
             }
 
             function jaysStatsEntryValue(entry, key) {
@@ -90247,7 +90234,7 @@
                         stopJaysStats2ImportUiTicker();
                         return;
                     }
-                    if (activeView !== "jays-stats-2") return;
+                    if (activeView !== "cashflow") return;
                     renderJaysStats2Screen();
                 }, 1000);
             }
@@ -90557,6 +90544,7 @@
                     { key: "unclassified", label: "Unclassified" },
                     { key: "ignition-disbursals", label: "Ignition disbursals" },
                     { key: "stripe-income", label: "Stripe income" },
+                    { key: "cash-cheques", label: "Cash / cheques" },
                     { key: "vending-income", label: "Vending machine income" },
                     { key: "bank-transfers", label: "Bank transfers" },
                     { key: "other-income", label: "Other income" },
@@ -90868,6 +90856,7 @@
                     ignition: 0,
                     bankTransfers: 0,
                     stripe: 0,
+                    cashCheques: 0,
                     vending: 0,
                     other: 0,
                 };
@@ -90878,6 +90867,7 @@
                     if (key === "ignition-disbursals") totals.ignition += amount;
                     else if (key === "bank-transfers") totals.bankTransfers += amount;
                     else if (key === "stripe-income") totals.stripe += amount;
+                    else if (key === "cash-cheques") totals.cashCheques += amount;
                     else if (key === "vending-income") totals.vending += amount;
                     else totals.other += amount;
                 });
@@ -90984,7 +90974,7 @@
             function renderJaysStats2Screen() {
                 const panel = document.getElementById("jaysStats2Panel");
                 if (!panel) return;
-                if (activeView !== "jays-stats-2" && (jaysStats2UploadSummaryModalOpen || jaysStats2ImportWizardOpen || jaysStats2CashAvailabilityModalOpen)) {
+                if (activeView !== "cashflow" && (jaysStats2UploadSummaryModalOpen || jaysStats2ImportWizardOpen || jaysStats2CashAvailabilityModalOpen)) {
                     jaysStats2UploadSummaryModalOpen = false;
                     jaysStats2ImportWizardOpen = false;
                     jaysStats2CashAvailabilityModalOpen = false;
@@ -91186,7 +91176,7 @@
                         <header class="jays-stats-topbar">
                             <div>
                                 <p class="eyebrow">Statement transaction loader</p>
-                                <h3>Cash Collection Tracker</h3>
+                                <h3>Cashflow</h3>
                                 <p class="detail-meta">${escapeHTML(String(account?.name || "JUK Trading Account"))} ${escapeHTML(String(account?.sortCode || "20-59-43"))} ${escapeHTML(String(account?.accountNumber || "93960404"))}</p>
                             </div>
                             <div class="detail-actions">
@@ -91239,6 +91229,11 @@
                                             <td style="padding:10px;">Stripe income (MTD actual)</td>
                                             <td style="padding:10px;">${escapeHTML(formatCurrency(reportingActuals.stripe))}</td>
                                             <td style="padding:10px;">Categorised as Stripe income</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px;">Cash / cheques (MTD actual)</td>
+                                            <td style="padding:10px;">${escapeHTML(formatCurrency(reportingActuals.cashCheques))}</td>
+                                            <td style="padding:10px;">Categorised as cash or cheque deposits</td>
                                         </tr>
                                         <tr>
                                             <td style="padding:10px;">Vending income (MTD actual)</td>
@@ -118346,6 +118341,7 @@
                 ]);
                 const activeViewSteps = {
                     insights: new Set(["renderDashboardHero", "renderInsightsScreen"]),
+                    cashflow: new Set(["renderJaysStats2Screen"]),
                     notifications: new Set(["renderNotificationsScreen"]),
                     ledger: new Set(["renderDashboardHero", "renderSummaryCounts", "renderToolbarControls", "renderInvoiceTable", "renderBulkActionToolbar", "applyColumnVisibility"]),
                     client: new Set(["renderDashboardHero", "renderClientScreen"]),
