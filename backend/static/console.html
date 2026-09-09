@@ -90548,6 +90548,14 @@
                 const serverCapWarning = workspaceWindow?.hasMore
                     ? `Server currently returned ${Number(workspaceWindow?.returnedCount || transactions.length).toLocaleString("en-GB")} rows. Increase API limit to load older transactions.`
                     : "";
+                const canResetGridFilters = Boolean(
+                    String(jaysStats2SearchQuery || "").trim()
+                    || jaysStats2FilterDateFrom
+                    || jaysStats2FilterDateTo
+                    || !jaysStats2HideDebitRows
+                    || jaysStats2HideCategorisedRows
+                    || jaysStats2SortMode !== "date-desc"
+                );
                 const aiBalanceNotes = (jaysStats2AiBalanceNotes || []).slice(0, 3).map((note) => `<li>${escapeHTML(String(note || ""))}</li>`).join("");
                 const showImportExamplesModal = Boolean(importSummary && jaysStats2UploadSummaryModalOpen && jaysStats2UploadSummaryModalKey === String(importSummary?.summaryKey || ""));
                 const searchExpanded = jaysStats2SearchExpanded || Boolean(String(jaysStats2SearchQuery || "").trim());
@@ -90716,6 +90724,7 @@
                             <input id="jaysStats2FilterDateTo" type="date" value="${escapeHTML(jaysStats2FilterDateTo)}">
                             <label class="jays-stats-toggle"><input type="checkbox" id="jaysStats2HideDebitsToggle" ${jaysStats2HideDebitRows ? "checked" : ""}> Hide debit rows</label>
                             <label class="jays-stats-toggle"><input type="checkbox" id="jaysStats2HideCategorisedToggle" ${jaysStats2HideCategorisedRows ? "checked" : ""}> Hide categorised rows</label>
+                            <button class="ghost-button" id="jaysStats2ClearFiltersButton" type="button" ${canResetGridFilters ? "" : "disabled"}>Clear filters</button>
                             <button class="ghost-button" id="jaysStats2AiBalanceSortButtonTop" type="button" ${jaysStats2BulkBusy || visibleTransactions.length === 0 ? "disabled" : ""}>${jaysStats2BulkBusy ? "Working..." : "AI check"}</button>
                             <span class="jays-stats-table-count">${escapeHTML(rowCountSummary)}</span>
                         </section>
@@ -90753,7 +90762,7 @@
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody>${rows || `<tr><td colspan="${showRunningBalanceColumn ? 7 : 6}" style="padding:10px;">No rows match current filters.</td></tr>`}</tbody>
+                                <tbody>${rows || `<tr><td colspan="${showRunningBalanceColumn ? 7 : 6}" style="padding:10px;">No rows match current filters. Use Clear filters to reset view.</td></tr>`}</tbody>
                             </table>
                         </section>
                         <section class="jays-stats-table-toolbar">
@@ -91083,6 +91092,17 @@
                 });
                 document.getElementById("jaysStats2HideCategorisedToggle")?.addEventListener("change", (event) => {
                     jaysStats2HideCategorisedRows = Boolean(event?.target?.checked);
+                    jaysStats2CurrentPage = 1;
+                    renderJaysStats2Screen();
+                });
+                document.getElementById("jaysStats2ClearFiltersButton")?.addEventListener("click", () => {
+                    jaysStats2SortMode = "date-desc";
+                    jaysStats2SearchQuery = "";
+                    jaysStats2SearchExpanded = false;
+                    jaysStats2FilterDateFrom = "";
+                    jaysStats2FilterDateTo = "";
+                    jaysStats2HideDebitRows = true;
+                    jaysStats2HideCategorisedRows = false;
                     jaysStats2CurrentPage = 1;
                     renderJaysStats2Screen();
                 });
