@@ -37866,10 +37866,14 @@
                 --surface-line: rgba(3, 85, 129, 0.12);
                 --text-strong: #0b2f4a;
                 --text-muted: #557189;
+                --surface-glow: 0 24px 50px rgba(3, 52, 86, 0.12);
             }
             body {
                 font-family: "Poppins", system-ui, -apple-system, sans-serif;
-                background: linear-gradient(180deg, #f6f9fd 0%, #edf4fb 100%);
+                background:
+                    radial-gradient(1200px 580px at 10% -20%, rgba(58, 141, 222, 0.18), transparent 60%),
+                    radial-gradient(1000px 540px at 100% 0%, rgba(4, 184, 197, 0.14), transparent 58%),
+                    linear-gradient(180deg, #f7fbff 0%, #edf4fb 100%);
                 color: var(--text-strong);
             }
             .console-app-frame {
@@ -37899,12 +37903,12 @@
                 grid-template-columns: auto minmax(0, 1fr) auto auto;
                 align-items: center;
                 gap: 12px;
-                background: rgba(255, 255, 255, 0.92);
-                border: 1px solid var(--surface-line);
-                border-radius: 18px;
-                box-shadow: 0 18px 45px rgba(3, 85, 129, 0.1);
-                padding: 10px 12px;
-                backdrop-filter: blur(10px);
+                background: rgba(255, 255, 255, 0.93);
+                border: 1px solid rgba(3, 85, 129, 0.14);
+                border-radius: 20px;
+                box-shadow: var(--surface-glow);
+                padding: 12px 14px;
+                backdrop-filter: blur(12px);
             }
             .saas-topbar-brand {
                 display: inline-flex;
@@ -37925,6 +37929,31 @@
                 flex-wrap: wrap;
             }
             .saas-topbar-nav button {
+                border: 1px solid rgba(3, 85, 129, 0.08);
+                background: transparent;
+                color: var(--text-muted);
+                border-radius: 10px;
+                padding: 8px 12px;
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+            }
+            .saas-topbar-nav button:hover {
+                transform: translateY(-1px);
+                background: rgba(0, 117, 201, 0.08);
+                border-color: rgba(0, 117, 201, 0.2);
+            }
+            .saas-topbar-nav button.is-active {
+                color: var(--brand-core-blue);
+                background: rgba(0, 117, 201, 0.11);
+                border-color: rgba(0, 117, 201, 0.2);
+            }
+            .saas-nav-menu {
+                position: relative;
+            }
+            .saas-nav-menu > summary {
+                list-style: none;
                 border: 1px solid transparent;
                 background: transparent;
                 color: var(--text-muted);
@@ -37933,16 +37962,67 @@
                 font-size: 13px;
                 font-weight: 600;
                 cursor: pointer;
+                user-select: none;
             }
-            .saas-topbar-nav button.is-active {
+            .saas-nav-menu > summary::-webkit-details-marker {
+                display: none;
+            }
+            .saas-nav-menu[open] > summary,
+            .saas-nav-menu.is-active > summary {
                 color: var(--brand-core-blue);
                 background: rgba(0, 117, 201, 0.11);
                 border-color: rgba(0, 117, 201, 0.2);
+            }
+            .saas-nav-menu-panel {
+                position: absolute;
+                top: calc(100% + 8px);
+                left: 0;
+                min-width: 210px;
+                padding: 8px;
+                border-radius: 12px;
+                border: 1px solid var(--surface-line);
+                background: #fff;
+                box-shadow: 0 14px 30px rgba(3, 38, 63, 0.16);
+                display: grid;
+                gap: 4px;
+                z-index: 170;
+            }
+            .saas-nav-menu-item {
+                border: 0;
+                background: transparent;
+                text-align: left;
+                font-size: 13px;
+                color: var(--text-strong);
+                border-radius: 8px;
+                padding: 8px 10px;
+                cursor: pointer;
+            }
+            .saas-nav-menu-item:hover {
+                background: rgba(0, 117, 201, 0.08);
             }
             .saas-search-wrap {
                 position: relative;
                 width: min(480px, 100%);
                 justify-self: end;
+            }
+            .saas-topbar-utils {
+                display: inline-flex;
+                gap: 6px;
+                align-items: center;
+            }
+            .saas-topbar-util {
+                border: 1px solid rgba(3, 85, 129, 0.18);
+                background: #fff;
+                color: var(--brand-deep-blue);
+                border-radius: 10px;
+                padding: 8px 10px;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+                white-space: nowrap;
+            }
+            .saas-topbar-util:hover {
+                background: rgba(0, 117, 201, 0.08);
             }
             .saas-split-toggle {
                 display: inline-flex;
@@ -37964,6 +38044,11 @@
                 padding: 10px 12px;
                 font-size: 14px;
                 outline: none;
+                transition: border-color 0.18s ease, box-shadow 0.18s ease;
+            }
+            .saas-search-input:focus {
+                border-color: rgba(0, 117, 201, 0.45);
+                box-shadow: 0 0 0 4px rgba(0, 117, 201, 0.12);
             }
             .saas-search-results {
                 position: absolute;
@@ -38017,6 +38102,12 @@
                 padding: 14px 16px;
                 text-align: left;
                 cursor: pointer;
+                box-shadow: 0 10px 24px rgba(5, 53, 91, 0.08);
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }
+            .ops-kpi:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 14px 28px rgba(5, 53, 91, 0.13);
             }
             .ops-kpi span {
                 display: block;
@@ -38043,6 +38134,7 @@
                 background: var(--surface-card);
                 padding: 14px;
                 min-height: 140px;
+                box-shadow: 0 8px 20px rgba(5, 53, 91, 0.07);
             }
             .ops-panel h4 {
                 margin: 0 0 10px;
@@ -38075,6 +38167,9 @@
                 border-collapse: separate;
                 border-spacing: 0;
                 background: #fff;
+                border: 1px solid rgba(3, 85, 129, 0.1);
+                border-radius: 14px;
+                overflow: hidden;
             }
             .ledger-shell table th {
                 background: #f2f7fc;
@@ -38084,6 +38179,14 @@
             }
             .ledger-shell table td {
                 border-bottom: 1px solid rgba(3, 85, 129, 0.08);
+            }
+            .ledger-shell table tr:hover td {
+                background: rgba(0, 117, 201, 0.04);
+            }
+            .detail-card,
+            .detail-panel {
+                border-radius: 14px;
+                box-shadow: 0 12px 28px rgba(5, 53, 91, 0.08);
             }
             .split-view-enabled .ledger-shell {
                 display: grid;
@@ -38152,6 +38255,9 @@
                     justify-self: stretch;
                     width: 100%;
                 }
+                .saas-topbar-utils {
+                    flex-wrap: wrap;
+                }
                 .saas-split-toggle {
                     justify-self: start;
                 }
@@ -38207,12 +38313,27 @@
                     </div>
                     <nav class="saas-topbar-nav" aria-label="Primary">
                         <button type="button" data-saas-nav="home">Home</button>
-                        <button type="button" data-saas-nav="clients">Clients</button>
-                        <button type="button" data-saas-nav="work">Work</button>
-                        <button type="button" data-saas-nav="money">Money</button>
-                        <button type="button" data-saas-nav="documents">Documents</button>
-                        <button type="button" data-saas-nav="reports">Reports</button>
+                        <button type="button" data-saas-nav="clients">Debtors</button>
+                        <button type="button" data-saas-nav="contact-archive">Contact Archive</button>
+                        <button type="button" data-saas-nav="lpcs">LPCs</button>
+                        <button type="button" data-saas-nav="bad-debt">Bad Debt</button>
+                        <button type="button" data-saas-nav="jashflow">Jashflow</button>
+                        <button type="button" data-saas-nav="pi-clearing-account-page">PI Clearing</button>
+                        <button type="button" data-saas-nav="juk-equity">JUK Equity</button>
+                        <details class="saas-nav-menu" data-saas-menu="settings">
+                            <summary>Settings</summary>
+                            <div class="saas-nav-menu-panel" id="saasSettingsMenuPanel" role="menu"></div>
+                        </details>
+                        <details class="saas-nav-menu" data-saas-menu="more">
+                            <summary>More</summary>
+                            <div class="saas-nav-menu-panel" id="saasMoreMenuPanel" role="menu"></div>
+                        </details>
                     </nav>
+                    <div class="saas-topbar-utils" aria-label="Workspace actions">
+                        <button type="button" class="saas-topbar-util" data-saas-utility="notifications">Notifications</button>
+                        <button type="button" class="saas-topbar-util" data-saas-utility="notify">Notify</button>
+                        <button type="button" class="saas-topbar-util" data-saas-utility="search-menu">Menu search</button>
+                    </div>
                     <div class="saas-search-wrap">
                         <input class="saas-search-input" id="saasGlobalSearchInput" type="search" placeholder="Search clients, invoices, workspaces, reports..." autocomplete="off" aria-label="Global search">
                         <div class="saas-search-results" id="saasGlobalSearchResults" hidden></div>
@@ -55777,10 +55898,12 @@
             function saasNavForActiveView() {
                 if (activeView === "insights") return "home";
                 if (activeView === "ledger" || activeView === "client") return "clients";
-                if (["task-list", "tasks", "task-bookkeeping-workflow", "task-approvals-bouncebacks", "task-completed", "contact-archive"].includes(activeView)) return "work";
-                if (["late-charges", "bad-debt", "lpcs", "bank-statements", "jashflow", "supplier-payments", "supplier-reconciliation", "supplier-reconciliation-statement-page", "pi-clearing-account", "pi-clearing-account-page"].includes(activeView)) return "money";
-                if (["vault", "company-secretarial", "company-secreterial", "confirmation-statements", "hmrc-64-8s", "new-formations", "aml-verification"].includes(activeView)) return "documents";
-                if (["me-report", "practice-packs", "xero-subs-review", "juk-equity", "payroll-headcount", "submitted-employee-forms", "client-call-stats", "code-breaker", "micro-analyzer"].includes(activeView)) return "reports";
+                if (activeView === "contact-archive") return "contact-archive";
+                if (activeView === "late-charges") return "lpcs";
+                if (activeView === "bad-debt") return "bad-debt";
+                if (activeView === "jashflow") return "jashflow";
+                if (activeView === "pi-clearing-account" || activeView === "pi-clearing-account-page") return "pi-clearing-account-page";
+                if (activeView === "juk-equity") return "juk-equity";
                 return "home";
             }
 
@@ -55788,10 +55911,79 @@
                 const target = String(section || "").trim();
                 if (target === "home") return handleAppNavigation("home");
                 if (target === "clients") return handleAppNavigation("clients");
-                if (target === "work") return handleAppNavigation("task-list");
-                if (target === "money") return handleAppNavigation("bank-statements");
-                if (target === "documents") return handleAppNavigation("vault");
-                if (target === "reports") return handleAppNavigation("me-report");
+                if (target === "lpcs") return handleAppNavigation("lpcs");
+                if (target === "contact-archive") return handleAppNavigation("contact-archive");
+                if (target === "bad-debt") return handleAppNavigation("bad-debt");
+                if (target === "jashflow") return handleAppNavigation("jashflow");
+                if (target === "pi-clearing-account-page") return handleAppNavigation("pi-clearing-account-page");
+                if (target === "juk-equity") return handleAppNavigation("juk-equity");
+                return handleAppNavigation(target);
+            }
+
+            function buildSaasTopbarMenusFromSidebar() {
+                const appRoot = document.querySelector(".app-sidebar");
+                if (!appRoot) return;
+                const morePanel = document.getElementById("saasMoreMenuPanel");
+                const settingsPanel = document.getElementById("saasSettingsMenuPanel");
+                if (!morePanel || !settingsPanel) return;
+
+                const topNavKeys = new Set(
+                    [...document.querySelectorAll("[data-saas-nav]")]
+                        .map((node) => String(node.dataset.saasNav || "").trim())
+                        .filter(Boolean)
+                );
+
+                const moreRows = [];
+                appRoot.querySelectorAll("[data-app-nav]").forEach((node) => {
+                    const nav = String(node.dataset.appNav || "").trim();
+                    const label = String(node.querySelector(".app-nav-copy strong")?.textContent || node.textContent || "").trim();
+                    if (!nav || !label) return;
+                    if (topNavKeys.has(nav)) return;
+                    if (removedNavigationViews.has(nav)) return;
+                    moreRows.push({ nav, label });
+                });
+                const dedupMore = new Map();
+                moreRows.forEach((row) => {
+                    if (!dedupMore.has(row.nav)) dedupMore.set(row.nav, row);
+                });
+                settingsPanel.innerHTML = "";
+                morePanel.innerHTML = "";
+
+                const settingRows = [];
+                appRoot.querySelectorAll("[data-settings-nav]").forEach((node) => {
+                    const section = String(node.dataset.settingsNav || "").trim();
+                    const label = String(node.querySelector(".app-nav-copy strong")?.textContent || node.querySelector(".settings-sidebar-copy strong")?.textContent || node.textContent || "").trim();
+                    if (!section || !label) return;
+                    if (removedSettingsSections.has(section)) return;
+                    settingRows.push({ section, label });
+                });
+                const dedupSettings = new Map();
+                settingRows.forEach((row) => {
+                    if (!dedupSettings.has(row.section)) dedupSettings.set(row.section, row);
+                });
+
+                settingsPanel.innerHTML = [...dedupSettings.values()]
+                    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
+                    .map((row) => `<button type="button" class="saas-nav-menu-item" data-saas-settings="${escapeHTML(row.section)}" role="menuitem">${escapeHTML(row.label)}</button>`)
+                    .join("");
+
+                morePanel.innerHTML = [...dedupMore.values()]
+                    .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }))
+                    .map((row) => `<button type="button" class="saas-nav-menu-item" data-saas-nav="${escapeHTML(row.nav)}" role="menuitem">${escapeHTML(row.label)}</button>`)
+                    .join("");
+            }
+
+            function triggerHiddenSidebarControl(action = "") {
+                const targetId = action === "notifications"
+                    ? "sidebarNotificationsButton"
+                    : action === "notify"
+                        ? "sidebarNotifySomeoneButton"
+                        : action === "search-menu"
+                            ? "sidebarSearchToggle"
+                            : "";
+                if (!targetId) return;
+                const target = document.getElementById(targetId);
+                target?.click();
             }
 
             function globalSearchCatalog() {
@@ -55799,9 +55991,6 @@
                 const sectionRows = [
                     { label: "Home dashboard", detail: "Operational dashboard", nav: "home" },
                     { label: "Clients", detail: "Debtors table and workspace", nav: "clients" },
-                    { label: "Work queue", detail: "Tasks and follow-ups", nav: "task-list" },
-                    { label: "Money", detail: "Bank statements and controls", nav: "bank-statements" },
-                    { label: "Documents", detail: "Vault and compliance docs", nav: "vault" },
                     { label: "Reports", detail: "ME Reports and outputs", nav: "me-report" },
                 ];
                 const clientRows = customers.map((client) => {
@@ -55862,6 +56051,8 @@
                     button.classList.toggle("is-active", isActive);
                     button.setAttribute("aria-current", isActive ? "page" : "false");
                 });
+                const settingsMenu = document.querySelector("[data-saas-menu=\"settings\"]");
+                if (settingsMenu) settingsMenu.classList.toggle("is-active", activeView === "settings");
             }
 
             function renderSaasContextDrawer() {
@@ -55894,6 +56085,7 @@
             }
 
             function wireSaasShell() {
+                buildSaasTopbarMenusFromSidebar();
                 try {
                     const persisted = window.localStorage.getItem("jenius_split_view");
                     if (persisted === "0") setSplitViewEnabled(false, false);
@@ -55922,6 +56114,21 @@
                     if (navButton) {
                         event.preventDefault();
                         openSaasTopNav(navButton.dataset.saasNav || "");
+                        return;
+                    }
+                    const settingsButton = event.target.closest?.("[data-saas-settings]");
+                    if (settingsButton) {
+                        event.preventDefault();
+                        const section = String(settingsButton.dataset.saasSettings || "").trim();
+                        openSettingsScreen(section || "settings-home", "settings");
+                        const settingsMenu = settingsButton.closest("details");
+                        if (settingsMenu && settingsMenu.hasAttribute("open")) settingsMenu.removeAttribute("open");
+                        return;
+                    }
+                    const utilityButton = event.target.closest?.("[data-saas-utility]");
+                    if (utilityButton) {
+                        event.preventDefault();
+                        triggerHiddenSidebarControl(String(utilityButton.dataset.saasUtility || "").trim());
                         return;
                     }
                     const navResult = event.target.closest?.("[data-saas-search-nav]");
@@ -55953,6 +56160,9 @@
                         saasDrawerClosedClientId = String(selectedClientId || "");
                         if (drawer) drawer.hidden = true;
                         return;
+                    }
+                    if (!event.target.closest?.(".saas-nav-menu")) {
+                        document.querySelectorAll(".saas-nav-menu[open]").forEach((menu) => menu.removeAttribute("open"));
                     }
                     if (!event.target.closest?.(".saas-search-wrap")) {
                         if (panel) {
