@@ -38086,6 +38086,93 @@
                 gap: 6px;
                 align-items: center;
             }
+            .saas-user-menu {
+                position: relative;
+            }
+            .saas-user-menu > summary {
+                list-style: none;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                border: 1px solid rgba(3, 85, 129, 0.14);
+                background: #fff;
+                color: var(--brand-deep-blue);
+                border-radius: 12px;
+                padding: 7px 10px;
+                cursor: pointer;
+                user-select: none;
+            }
+            .saas-user-menu > summary::-webkit-details-marker {
+                display: none;
+            }
+            .saas-user-menu[open] > summary {
+                border-color: rgba(0, 117, 201, 0.32);
+                box-shadow: 0 0 0 3px rgba(0, 117, 201, 0.08);
+            }
+            .saas-user-avatar {
+                width: 26px;
+                height: 26px;
+                border-radius: 8px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                background: linear-gradient(135deg, rgba(0, 117, 201, 0.14), rgba(4, 184, 197, 0.14));
+                color: var(--brand-core-blue);
+                border: 1px solid rgba(0, 117, 201, 0.22);
+            }
+            .saas-user-avatar svg {
+                width: 14px;
+                height: 14px;
+                stroke: currentColor;
+                fill: none;
+                stroke-width: 1.8;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .saas-user-copy {
+                display: inline-flex;
+                flex-direction: column;
+                line-height: 1.08;
+                min-width: 0;
+            }
+            .saas-user-copy strong {
+                font-size: 12px;
+                max-width: 150px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .saas-user-copy small {
+                font-size: 11px;
+                color: var(--text-muted);
+            }
+            .saas-user-panel {
+                position: absolute;
+                right: 0;
+                top: calc(100% + 8px);
+                min-width: 180px;
+                padding: 8px;
+                border-radius: 12px;
+                border: 1px solid var(--surface-line);
+                background: #fff;
+                box-shadow: 0 14px 30px rgba(3, 38, 63, 0.16);
+                display: grid;
+                gap: 4px;
+                z-index: 170;
+            }
+            .saas-user-action {
+                border: 0;
+                background: transparent;
+                text-align: left;
+                font-size: 13px;
+                color: var(--text-strong);
+                border-radius: 8px;
+                padding: 8px 10px;
+                cursor: pointer;
+            }
+            .saas-user-action:hover {
+                background: rgba(0, 117, 201, 0.08);
+            }
             .saas-topbar-util {
                 border: 1px solid rgba(3, 85, 129, 0.18);
                 background: #fff;
@@ -38410,6 +38497,20 @@
                         </details>
                     </nav>
                     <div class="saas-topbar-utils" aria-label="Workspace actions">
+                        <details class="saas-user-menu" id="saasUserCard" hidden>
+                            <summary>
+                                <span class="saas-user-avatar" id="saasUserAvatar" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="8" r="3.5"></circle><path d="M5.5 19a6.5 6.5 0 0 1 13 0"></path></svg>
+                                </span>
+                                <span class="saas-user-copy">
+                                    <strong id="saasUserName">Jay</strong>
+                                    <small id="saasUserMeta">Signed in</small>
+                                </span>
+                            </summary>
+                            <div class="saas-user-panel" role="menu">
+                                <button class="saas-user-action" id="saasLogoutButton" type="button" role="menuitem">Log Out</button>
+                            </div>
+                        </details>
                     </div>
                     <div class="saas-search-wrap">
                         <input class="saas-search-input" id="saasGlobalSearchInput" type="search" placeholder="Search clients, invoices, workspaces, reports..." autocomplete="off" aria-label="Global search">
@@ -56082,6 +56183,9 @@
                     }
                     if (!event.target.closest?.(".saas-nav-menu")) {
                         document.querySelectorAll(".saas-nav-menu[open]").forEach((menu) => menu.removeAttribute("open"));
+                    }
+                    if (!event.target.closest?.(".saas-user-menu")) {
+                        document.querySelectorAll(".saas-user-menu[open]").forEach((menu) => menu.removeAttribute("open"));
                     }
                     if (!event.target.closest?.(".saas-search-wrap")) {
                         if (panel) {
@@ -103439,27 +103543,44 @@
             function renderSidebarUserProfile() {
                 const card = document.getElementById("sidebarUserCard");
                 const trigger = document.getElementById("sidebarUserTrigger");
-                if (!card || !trigger) return;
                 const user = currentSessionUser;
+                const saasUserCard = document.getElementById("saasUserCard");
+                const saasUserName = document.getElementById("saasUserName");
+                const saasUserMeta = document.getElementById("saasUserMeta");
                 if (!user) {
-                    card.hidden = true;
+                    if (card) card.hidden = true;
+                    if (saasUserCard) saasUserCard.hidden = true;
                     closeSidebarUserMenu();
                     closeSidebarUserModal();
                     return;
                 }
-                card.hidden = false;
-                const avatar = document.getElementById("sidebarUserAvatar");
-                const name = document.getElementById("sidebarUserName");
-                if (avatar) {
-                    avatar.innerHTML = `<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5.5 19a6.5 6.5 0 0 1 13 0"></path></svg>`;
+                const displayName = user.fullName || user.email || "Signed in user";
+                if (card && trigger) {
+                    card.hidden = false;
+                    const avatar = document.getElementById("sidebarUserAvatar");
+                    const name = document.getElementById("sidebarUserName");
+                    if (avatar) {
+                        avatar.innerHTML = `<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><circle cx="12" cy="8" r="3.5"></circle><path d="M5.5 19a6.5 6.5 0 0 1 13 0"></path></svg>`;
+                    }
+                    if (name) {
+                        name.textContent = displayName;
+                        name.title = name.textContent;
+                    }
+                    const dateNode = document.getElementById("sidebarUserDate");
+                    if (dateNode) {
+                        dateNode.textContent = formatSidebarUserDate(new Date());
+                    }
                 }
-                if (name) {
-                    name.textContent = user.fullName || user.email || "Signed in user";
-                    name.title = name.textContent;
-                }
-                const dateNode = document.getElementById("sidebarUserDate");
-                if (dateNode) {
-                    dateNode.textContent = formatSidebarUserDate(new Date());
+                if (saasUserCard) {
+                    saasUserCard.hidden = false;
+                    if (saasUserName) {
+                        saasUserName.textContent = displayName;
+                        saasUserName.title = displayName;
+                    }
+                    if (saasUserMeta) {
+                        saasUserMeta.textContent = user.email || "Signed in";
+                        saasUserMeta.title = user.email || "Signed in";
+                    }
                 }
             }
 
@@ -123909,7 +124030,7 @@
                     event.preventDefault();
                     openDeveloperLog();
                 });
-                document.querySelectorAll("#sidebarUserLogout, #menuLogoutButton").forEach((button) => {
+                document.querySelectorAll("#sidebarUserLogout, #menuLogoutButton, #saasLogoutButton").forEach((button) => {
                     button.addEventListener("click", (event) => {
                         event.preventDefault();
                         logoutUser();
