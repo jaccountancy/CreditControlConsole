@@ -5897,9 +5897,6 @@
             body.is-jays-stats-2-view .ledger-topbar {
                 display: none;
             }
-            body.is-jays-stats-2-view .ledger-shell > section:not(#jaysStats2Screen) {
-                display: none !important;
-            }
             body.is-jays-stats-2-view .ledger-shell > #jaysStats2Screen {
                 margin-top: 0;
             }
@@ -16485,8 +16482,19 @@
                 display: grid;
                 gap: 14px;
                 width: 100%;
+                max-width: none;
                 min-height: auto;
                 align-content: start;
+            }
+            #jashflowScreen.detail-card,
+            #jukEquityScreen.detail-card {
+                width: 100%;
+                max-width: none;
+            }
+            #jashflowScreen > .detail-panel,
+            #jukEquityScreen > .detail-panel {
+                width: 100%;
+                max-width: none;
             }
             body.is-tool-page #jaysStats2Screen.detail-card {
                 min-height: auto;
@@ -70535,10 +70543,13 @@
                 const ignitionScreen = document.getElementById("ignitionScreen");
                 const ignitionClientsScreen = document.getElementById("ignitionClientsScreen");
                 const meReportScreen = document.getElementById("meReportScreen");
+                const jaysStats2Screen = document.getElementById("jaysStats2Screen");
+                const jukEquityScreen = document.getElementById("jukEquityScreen");
                 const splitMode = splitViewEnabled();
                 const splitClientMode = splitMode && (activeView === "ledger" || activeView === "client");
                 setElementVisible(ledgerView, activeView === "ledger" || splitClientMode);
                 setElementVisible(clientScreen, activeView === "client" || splitClientMode);
+                setElementVisible(jaysStats2Screen, activeView === "cashflow");
                 setElementVisible(settingsScreen, activeView === "settings");
                 setElementVisible(insightsScreen, activeView === "insights");
                 setElementVisible(lateChargesScreen, activeView === "late-charges");
@@ -70560,6 +70571,7 @@
                 setElementVisible(ignitionScreen, activeView === "ignition");
                 setElementVisible(ignitionClientsScreen, activeView === "ignition-clients");
                 setElementVisible(meReportScreen, activeView === "me-report");
+                setElementVisible(jukEquityScreen, activeView === "juk-equity");
                 if (activeView !== "client" && !splitClientMode) return;
 
                 if (!clientSections.has(activeClientSection)) activeClientSection = "invoices";
@@ -76824,6 +76836,8 @@
                 detail.innerHTML = "";
 
                 if (jashflowLoading) {
+                    list.hidden = false;
+                    detail.hidden = true;
                     list.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading Jashflow loans</h4><p>Reading saved loan records from the backend.</p></div>';
                     return;
                 }
