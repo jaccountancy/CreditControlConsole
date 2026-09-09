@@ -772,14 +772,6 @@
             .app-nav-group[data-app-nav-group="settings"] [data-settings-group-item].is-collapsed {
                 display: none !important;
             }
-            .settings-sidebar-button[data-settings-nav="outbox"] {
-                --settings-accent: var(--green);
-                --settings-accent-soft: var(--green-soft);
-            }
-            .settings-sidebar-button[data-settings-nav="outbox"] .settings-sidebar-icon {
-                background: linear-gradient(135deg, rgba(232, 248, 238, 0.96), rgba(218, 244, 228, 0.9));
-                border-color: rgba(39, 176, 95, 0.2);
-            }
             .settings-sidebar-button[data-settings-nav="xero-connection"] {
                 --settings-accent: var(--purple);
                 --settings-accent-soft: var(--purple-soft);
@@ -7691,6 +7683,22 @@
                 font-weight: 800;
                 line-height: 1.18;
             }
+            .client-name-button {
+                border: 0;
+                background: transparent;
+                padding: 0;
+                margin: 0;
+                cursor: pointer;
+                color: inherit;
+                text-align: left;
+                max-width: 100%;
+                font: inherit;
+            }
+            .client-name-button:hover,
+            .client-name-button:focus-visible {
+                color: var(--blue);
+                text-decoration: underline;
+            }
             .client-group-anchor {
                 position: relative;
                 min-width: 0;
@@ -7704,7 +7712,8 @@
                 margin-top: 0;
             }
             .client-open-count,
-            .client-credit-flag {
+            .client-credit-flag,
+            .client-status-updated {
                 display: inline-flex;
                 align-items: center;
                 border-radius: 999px;
@@ -7724,6 +7733,14 @@
             .client-credit-flag.is-loading {
                 background: var(--blue-soft);
                 color: var(--blue);
+            }
+            .client-status-updated {
+                background: rgba(4, 184, 197, 0.12);
+                color: #036977;
+            }
+            .client-status-updated.is-empty {
+                background: rgba(30, 47, 77, 0.08);
+                color: var(--muted);
             }
             .client-inline-status .status-pill {
                 font-size: 0.72rem;
@@ -7896,6 +7913,8 @@
             .status-pill.payment-plan { color: #146c54; background: rgba(31, 143, 110, 0.13); }
             .status-pill.court { color: var(--purple); background: var(--purple-soft); }
             .status-pill.bad-debt { color: var(--ink); background: rgba(30, 47, 77, 0.10); }
+            .status-pill.ok { color: #145f35; background: rgba(39, 176, 95, 0.17); }
+            .status-pill.na { color: #5e6678; background: rgba(94, 102, 120, 0.16); }
             .status-pill.juk-status-pill-action {
                 border: 1px solid rgba(61, 85, 130, 0.2);
                 cursor: pointer;
@@ -23781,6 +23800,9 @@
                     justify-self: start;
                     text-align: left;
                 }
+                .client-debtor-summary-grid {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
             }
             .client-action-grid { align-items: start; }
             .stack-form { display: grid; gap: 12px; margin-top: 16px; }
@@ -24462,6 +24484,51 @@
                 align-items: center;
                 gap: 8px;
                 flex-wrap: wrap;
+            }
+            .client-debtor-summary-grid {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 10px;
+            }
+            .client-debtor-summary-card {
+                padding: 12px 14px;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(248, 251, 255, 0.88);
+                display: grid;
+                gap: 4px;
+            }
+            .client-debtor-summary-card span {
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .client-debtor-summary-card strong {
+                font-size: 1.12rem;
+                line-height: 1.2;
+            }
+            .client-debtor-summary-card small {
+                color: #5c6f90;
+                font-size: 0.78rem;
+                font-weight: 750;
+            }
+            .client-debtor-summary-card.is-alert {
+                border-color: rgba(255, 83, 83, 0.26);
+                background: rgba(255, 236, 236, 0.92);
+            }
+            .client-debtor-summary-card.is-credit {
+                border-color: rgba(39, 176, 95, 0.28);
+                background: rgba(232, 248, 238, 0.92);
+            }
+            .client-ops-tools {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .client-ops-tools .ghost-button {
+                min-height: 38px;
             }
             .client-split-bulk-action {
                 display: inline-flex;
@@ -38322,12 +38389,21 @@
                     </div>
                     <nav class="saas-topbar-nav" aria-label="Primary">
                         <button type="button" data-saas-nav="home">Credit Control</button>
-                        <button type="button" data-saas-nav="cashflow">Cashflow</button>
-                        <button type="button" data-saas-nav="lpcs">LPCs</button>
-                        <button type="button" data-saas-nav="bad-debt">Bad Debt</button>
                         <button type="button" data-saas-nav="jashflow">Jashflow</button>
-                        <button type="button" data-saas-nav="pi-clearing-account-page">PI Clearing</button>
-                        <button type="button" data-saas-nav="juk-equity">JUK Equity</button>
+                        <details class="saas-nav-menu" data-saas-menu="tools">
+                            <summary>Tools</summary>
+                            <div class="saas-nav-menu-panel" role="menu">
+                                <button type="button" class="saas-nav-menu-item" data-saas-nav="lpcs" role="menuitem">LPCs</button>
+                                <button type="button" class="saas-nav-menu-item" data-saas-nav="pi-clearing-account-page" role="menuitem">PI Clearing</button>
+                            </div>
+                        </details>
+                        <details class="saas-nav-menu" data-saas-menu="reporting">
+                            <summary>Reporting</summary>
+                            <div class="saas-nav-menu-panel" role="menu">
+                                <button type="button" class="saas-nav-menu-item" data-saas-nav="cashflow" role="menuitem">Cash Collection</button>
+                                <button type="button" class="saas-nav-menu-item" data-saas-nav="juk-equity" role="menuitem">JUK Equity</button>
+                            </div>
+                        </details>
                         <details class="saas-nav-menu" data-saas-menu="settings">
                             <summary>Settings</summary>
                             <div class="saas-nav-menu-panel" id="saasSettingsMenuPanel" role="menu"></div>
@@ -38380,7 +38456,7 @@
                         <div class="app-nav-group" data-app-nav-group="credit-control">
                             <button class="app-nav-button app-nav-group-toggle" type="button" data-app-nav-toggle="credit-control" aria-expanded="false">
                                 <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 8h16"></path><path d="M4 12h16"></path><path d="M4 16h16"></path><path d="M7 5h10"></path></svg></span>
-                                <span class="app-nav-copy"><strong>Credit Control</strong><span>Debtors, LPCs, Bad Debt</span></span>
+                                <span class="app-nav-copy"><strong>Credit Control</strong><span>Debtors and collections</span></span>
                             </button>
                             <div class="app-nav-submenu" role="group" aria-label="Credit control sections">
                                 <a class="app-nav-button" href="#credit-control-clients" data-app-nav="clients">
@@ -38394,10 +38470,6 @@
                                 <a class="app-nav-button" href="#credit-control-lpcs" data-app-nav="lpcs">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="8"></circle><path d="M12 7v5l3 2"></path><path d="M7 4 4 7"></path><path d="m17 4 3 3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>LPCs</strong><span>Late charges</span></span>
-                                </a>
-                                <a class="app-nav-button" href="#credit-control-bad-debt" data-app-nav="bad-debt">
-                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M10.2 4.6 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.8 4.6a2 2 0 0 0-3.6 0Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Bad Debt</strong><span>Invoice Write offs</span></span>
                                 </a>
                                 <a class="app-nav-button" href="#credit-control-jashflow" data-app-nav="jashflow">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 17 9 12l4 4 7-9"></path><path d="M15 7h5v5"></path><path d="M4 21h16"></path></svg></span>
@@ -38444,15 +38516,7 @@
                                     <span class="app-nav-copy"><strong>Xero Link</strong><span>Connection</span></span>
                                 </button>
                                 <button class="settings-nav-group-label" type="button" data-settings-group-label="practice-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="7" width="18" height="12" rx="2"></rect><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path><path d="M3 12h18"></path></svg></span><span class="settings-nav-group-text">Practice Settings</span></button>
-                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="mapping">
-                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
-                                    <span class="app-nav-copy"><strong>Mapping / COA</strong><span>Posting defaults</span></span>
-                                </button>
                                 <button class="settings-nav-group-label" type="button" data-settings-group-label="communications" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path></svg></span><span class="settings-nav-group-text">Comms</span></button>
-                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="outbox">
-                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M4 14h4l2 3h4l2-3h4"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Xero Outbox</strong><span>Queued actions</span></span>
-                                </button>
                             <button class="settings-nav-group-label" type="button" data-settings-group-label="security-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 11v4"></path><path d="M12 8h.01"></path></svg></span><span class="settings-nav-group-text">Security</span></button>
                             <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-audit">
                                 <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 3h18v18H3z"></path><path d="M8 12h8"></path><path d="M8 8h8"></path><path d="M8 16h5"></path></svg></span>
@@ -38474,10 +38538,6 @@
                             <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="developer-log">
                                 <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
                                 <span class="app-nav-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
-                            </button>
-                            <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="factory-reset">
-                                <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
-                                <span class="app-nav-copy"><strong>Factory Reset</strong><span>Protected area</span></span>
                             </button>
                         </div>
                         </div>
@@ -38515,7 +38575,6 @@
                                     </button>
                                     <div class="sidebar-user-submenu" id="sidebarUserSettingsSubmenu" role="group" hidden>
                                         <button class="sidebar-user-submenu-item" type="button" data-sidebar-user-settings-nav="xero-connection">Xero connection</button>
-                                        <button class="sidebar-user-submenu-item" type="button" data-sidebar-user-settings-nav="mapping">Mapping / COA</button>
                                         <button class="sidebar-user-submenu-item" type="button" data-sidebar-user-settings-nav="usage">Usage</button>
                                     </div>
                                     <button class="sidebar-user-menu-item" id="sidebarUserOpenSettings" type="button" role="menuitem">User settings</button>
@@ -38542,15 +38601,7 @@
                                 <span class="settings-sidebar-copy"><strong>Xero Link</strong><span>Connection</span></span>
                             </button>
                             <button class="settings-nav-group-label" type="button" data-settings-group-label="practice-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="7" width="18" height="12" rx="2"></rect><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path><path d="M3 12h18"></path></svg></span><span class="settings-nav-group-text">Practice Settings</span></button>
-                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="mapping">
-                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
-                                <span class="settings-sidebar-copy"><strong>Mapping / COA</strong><span>Posting defaults</span></span>
-                            </button>
                             <button class="settings-nav-group-label" type="button" data-settings-group-label="communications" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path></svg></span><span class="settings-nav-group-text">Comms</span></button>
-                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="outbox">
-                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M4 14h4l2 3h4l2-3h4"></path></svg></span>
-                                <span class="settings-sidebar-copy"><strong>Xero Outbox</strong><span>Queued actions</span></span>
-                            </button>
                             <button class="settings-nav-group-label" type="button" data-settings-group-label="security-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 11v4"></path><path d="M12 8h.01"></path></svg></span><span class="settings-nav-group-text">Security</span></button>
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="security-settings" data-settings-nav="security-audit">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 3h18v18H3z"></path><path d="M8 12h8"></path><path d="M8 8h8"></path><path d="M8 16h5"></path></svg></span>
@@ -38568,35 +38619,6 @@
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="developer-log">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
-                            </button>
-                            <div class="factory-reset-gate-wrap settings-nav-group-item" id="settingsFactoryGateWrap" data-settings-group-item="technical-settings">
-                                <button class="settings-sidebar-button danger-button factory-reset-trigger" id="settingsFactorySidebarButton" type="button" aria-expanded="false" aria-controls="settingsFactoryPinPanel">
-                                    <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
-                                    <span class="settings-sidebar-copy"><strong>Factory Reset</strong><span>Protected area</span></span>
-                                </button>
-                                <form class="factory-reset-pin-panel" id="settingsFactoryPinPanel" hidden>
-                                    <input class="factory-reset-pin-input" id="settingsFactoryMasterPinInput" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter Master PIN" aria-label="Master PIN">
-                                    <button class="ghost-button factory-reset-pin-submit" id="settingsFactoryMasterPinSubmit" type="submit">Unlock</button>
-                                    <button class="ghost-button factory-reset-pin-cancel" id="settingsFactoryMasterPinCancel" type="button">Cancel</button>
-                                </form>
-                            </div>
-                        </nav>
-                    </div>
-                </aside>
-                <aside class="settings-mode-sidebar settings-sidebar-factory" aria-label="Factory reset navigation">
-                    <div class="settings-sidebar-card">
-                        <button class="settings-sidebar-back" id="factoryBackToSettingsSidebarButton" type="button">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M19 12H5"></path><path d="m12 5-7 7 7 7"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>Settings</strong><span>Back to controls</span></span>
-                        </button>
-                        <div class="settings-sidebar-title">
-                            <span class="settings-sidebar-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
-                            <span class="settings-sidebar-title-copy"><strong>Factory Reset</strong><span>Protected reset area</span></span>
-                        </div>
-                        <nav class="app-nav">
-                            <button class="settings-sidebar-button danger-button" id="factoryOpenResetPageButton" type="button">
-                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 7h14"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 14h10l1-14"></path></svg></span>
-                                <span class="settings-sidebar-copy"><strong>Open Reset</strong><span>Show controls</span></span>
                             </button>
                         </nav>
                     </div>
@@ -38984,7 +39006,6 @@
                                     <button type="button" id="menuInsightsButton">Insights</button>
                                     <button type="button" id="menuNotificationsButton">Notifications</button>
                                     <button type="button" id="menuLateChargesButton">Late Payment Charges</button>
-                                    <button type="button" id="menuBadDebtButton">Bad Debt</button>
                                     <button type="button" id="menuJashflowButton">Jashflow</button>
                                     <button type="button" id="menuBankStatementsButton">Bank Statements</button>
                                     <button type="button" id="menuIgnitionButton">Renewals</button>
@@ -39016,8 +39037,11 @@
                         <div class="bulk-action-summary" id="bulkActionSummary">0 invoices selected</div>
                         <div class="bulk-action-controls">
                             <select id="bulkLedgerStatusSelect">
+                                <option value="">No status</option>
                                 <option value="7 Day Notice Sent">7 Day Notice Sent</option>
                                 <option value="Chased">Mark as chased</option>
+                                <option value="OK">OK</option>
+                                <option value="N/A">N/A</option>
                                 <option value="Paid">Paid</option>
                                 <option value="Outstanding">Outstanding</option>
                                 <option value="Query">Query</option>
@@ -39165,7 +39189,6 @@
                                         <th class="is-sticky">Client</th>
                                         <th class="is-sticky">Amount Due</th>
                                         <th class="is-sticky" data-column="clientNotes">Notes</th>
-                                        <th class="is-sticky">Open</th>
                                     </tr>
                                 </thead>
                                 <tbody id="invoiceTableBody"></tbody>
@@ -39510,35 +39533,6 @@
                             </section>
                             </section>
 
-                            <section class="detail-panel settings-panel" data-settings-section="mapping">
-                                <div class="panel-heading">
-                                    <div>
-                                        <p class="eyebrow">Accounting codes</p>
-                                        <h3>Xero posting defaults</h3>
-                                    </div>
-                                    <button class="ghost-button" id="reloadXeroAccountsButton" type="button">Reload COA</button>
-                                </div>
-                                <p class="settings-help" id="postingSettingsHelp">Choose the Xero accounts used when the console posts late payment charge invoices and bad debt credit notes.</p>
-                                <form class="posting-settings-form" id="postingSettingsForm">
-                                    <div class="posting-settings-fields">
-                                        <label class="posting-settings-field" for="latePaymentChargeAccountSelect">
-                                            <span>Late payment charges</span>
-                                            <select id="latePaymentChargeAccountSelect"></select>
-                                        </label>
-                                        <label class="posting-settings-field" for="badDebtWriteOffAccountSelect">
-                                            <span>Bad debt write-offs</span>
-                                            <select id="badDebtWriteOffAccountSelect"></select>
-                                        </label>
-                                    </div>
-                                    <div class="posting-settings-status" id="postingSettingsStatus">
-                                        <span>Chart of accounts</span>
-                                        Connect Xero to load available accounts.
-                                    </div>
-                                    <div class="letter-action-row">
-                                        <button class="primary-button" id="savePostingSettingsButton" type="submit">Save codes</button>
-                                    </div>
-                                </form>
-                            </section>
 
                             <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="lock-date-mapping">
                                 <div class="panel-heading">
@@ -39577,22 +39571,6 @@
                                 </div>
                             </section>
 
-                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="outbox">
-                                <div class="panel-heading">
-                                    <div>
-                                        <p class="eyebrow">Xero outbox</p>
-                                        <h3>Pending changes to push into Xero</h3>
-                                    </div>
-                                    <div class="detail-actions">
-                                        <button class="ghost-button" id="settingsRefreshPendingXeroButton" type="button">Refresh</button>
-                                        <button class="primary-button" id="settingsSyncPendingXeroButton" type="button">Sync pending changes</button>
-                                    </div>
-                                </div>
-                                <p class="settings-help" id="pendingXeroActionsSummary">Queued late payment charges and bad debt write-offs will appear here while Xero is paused or rate-limited.</p>
-                                <div class="developer-log-list settings-developer-log-list" id="pendingXeroActionsList">
-                                    <div class="empty-state"><p class="eyebrow">No pending changes</p><h4>Xero outbox is clear</h4><p>Actions queued during a Xero rate limit will be saved here until they are pushed.</p></div>
-                                </div>
-                            </section>
 
                             <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="juksib-automation">
                                 <div class="panel-heading">
@@ -40137,20 +40115,6 @@
                                 </div>
                             </section>
 
-                            <section class="detail-panel settings-panel danger-panel factory-reset-panel" data-settings-section="factory-reset">
-                                <div class="panel-heading">
-                                    <div>
-                                        <p class="eyebrow">Hidden destructive action</p>
-                                        <h3>Factory settings and storage reset</h3>
-                                    </div>
-                                    <div class="factory-reset-guard-actions">
-                                        <button class="ghost-button" id="factoryResetRevealButton" type="button">Show reset controls</button>
-                                        <button class="ghost-button danger-button" id="factoryResetButton" type="button" hidden>Reset factory settings and storage</button>
-                                    </div>
-                                </div>
-                                <p class="settings-help">This clears imported ledger rows, local credit-control workflow data, sync history and browser settings. Xero stays connected so you can choose fresh import settings and resync from scratch.</p>
-                                <p class="factory-reset-guard-status" id="factoryResetGuardStatus">Press “Show reset controls” 4 times to reveal the reset button.</p>
-                            </section>
                         </div>
                     </section>
 
@@ -48020,7 +47984,7 @@
                             </div>
                             <nav class="xero-client-tabs client-section-nav" aria-label="Client sections">
                                 <button type="button" data-client-section="overview">Overview</button>
-                                <button type="button" class="is-active" data-client-section="invoices">Invoices</button>
+                                <button type="button" class="is-active" data-client-section="invoices">Transactions</button>
                                 <button type="button" data-client-section="letters">Tasks</button>
                                 <button type="button" data-client-section="legal">Documents</button>
                                 <button type="button" data-client-section="notes">Notes</button>
@@ -48083,7 +48047,7 @@
                                         <div class="panel-heading">
                                             <div>
                                                 <p class="eyebrow">Client transactions</p>
-                                                <h3>Outstanding Client Invoices</h3>
+                                                <h3>Credit Control Workspace</h3>
                                             </div>
                                             <div class="client-invoice-bulk-actions">
                                                 <label class="client-transaction-toggle">
@@ -48097,6 +48061,12 @@
                                                     <button class="ghost-button" id="clientBulkRaiseLpcsButton" type="button">Raise LPCs</button>
                                                 </div>
                                             </div>
+                                        </div>
+                                        <div class="client-debtor-summary-grid" id="clientDebtorSummaryGrid"></div>
+                                        <div class="client-ops-tools">
+                                            <button class="ghost-button" id="clientQuickAllocationButton" type="button">Allocation tool</button>
+                                            <button class="ghost-button" id="clientQuickLpcButton" type="button">Run LPC tool</button>
+                                            <button class="ghost-button" id="clientQuickBadDebtButton" type="button">Run bad debt tool</button>
                                         </div>
                                         <div class="client-statement-list" id="clientInvoiceList"></div>
                                     </section>
@@ -48223,7 +48193,10 @@
                                         </div>
                                         <form class="stack-form" id="bulkStatusForm">
                                             <select id="bulkStatusSelect">
+                                                <option value="">No status</option>
                                                 <option value="7 Day Notice Sent">7 Day Notice Sent</option>
+                                                <option value="OK">OK</option>
+                                                <option value="N/A">N/A</option>
                                                 <option value="Paid">Paid</option>
                                                 <option value="Outstanding">Outstanding</option>
                                                 <option value="Query">Query</option>
@@ -49759,6 +49732,8 @@
                 "client-matching",
                 "renewal-settings",
                 "lock-date-mapping",
+                "mapping",
+                "outbox",
                 "letters",
                 "gmail-connection",
                 "me-report-email",
@@ -49769,6 +49744,7 @@
                 "juksib-automation",
                 "juk-invoice-settings",
                 "product-releases",
+                "factory-reset",
             ]);
             let activeSettingsSection = typeof persistedUIState.activeSettingsSection === "string" && persistedUIState.activeSettingsSection.trim()
                 ? persistedUIState.activeSettingsSection
@@ -49891,7 +49867,7 @@
                 ledger: "Credit Control",
                 client: "Client",
                 insights: "Insights",
-                cashflow: "Cashflow",
+                cashflow: "Cash Collection",
                 notifications: "Notifications",
                 "late-charges": "Late Payment Charges",
                 "bad-debt": "Bad Debt",
@@ -50091,8 +50067,6 @@
                 "ignition-connection": "Connect or reconnect the Ignition account used for Reporting API syncs.",
                 "renewal-settings": "Unlock finalised renewal batches so they can be edited again.",
                 "client-auth-register": "Open and maintain the shared client list and Companies House auth code directory.",
-                mapping: "Review posting defaults and chart-of-account assumptions.",
-                outbox: "Review queued Xero actions waiting for a successful push.",
                 letters: "Create and edit reminder templates used from client pages.",
                 "me-report-email": "Control client snapshot emails, required BCC, and report send wording.",
                 "gmail-connection": "Connect or reconnect the Gmail inbox used for report email sending.",
@@ -50103,8 +50077,7 @@
                 usage: "Track OpenAI and Xero volume, estimated spend, and highest-traffic features.",
                 "developer-log": "Inspect sync events, backend errors, and API calls.",
                 "system-status": "Check stored record counts, database size, and backend health indicators.",
-                "domain-settings": "Track live custom-domain DNS, verification TXT records, and HTTPS reachability.",
-                "factory-reset": "Protected destructive controls are isolated from day-to-day settings."
+                "domain-settings": "Track live custom-domain DNS, verification TXT records, and HTTPS reachability."
             };
             let globalActivityOpen = false;
             let globalActivityCloseTimer = null;
@@ -54517,6 +54490,8 @@
                 const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
                 const now = new Date();
                 if (control.includes("bad debt") || control.includes("bad-debt") || control.includes("bad_debt")) return "bad-debt";
+                if (control === "ok") return "ok";
+                if (control === "n/a" || control === "na" || control === "not applicable") return "na";
                 if (amountDue <= 0 || control.includes("paid")) return "paid";
                 if (isSevenDayNoticeStatus(control)) return "notice";
                 if (control.includes("payment plan") || invoice.promiseStatus === "open" || (invoice.promises || []).length) return "payment-plan";
@@ -54528,7 +54503,7 @@
 
             function invoiceStatusLabel(invoice) {
                 const category = invoiceCategory(invoice);
-                return { paid: "Paid", outstanding: "Outstanding", query: "Query", overdue: "Overdue", notice: "7 Day Notice", "payment-plan": "Payment Plan", court: "Legal", "bad-debt": "Bad debt" }[category];
+                return { paid: "Paid", outstanding: "Outstanding", query: "Query", overdue: "Overdue", notice: "7 Day Notice", "payment-plan": "Payment Plan", court: "Legal", "bad-debt": "Bad debt", ok: "OK", na: "N/A" }[category];
             }
 
             function formatCurrency(value) {
@@ -55302,7 +55277,9 @@
                     notice: "Seven-day notice has been sent and is awaiting the next action.",
                     "payment-plan": "Invoice is included in an active payment plan.",
                     court: "Escalated legal recovery case.",
-                    "bad-debt": "Written off or treated as bad debt."
+                    "bad-debt": "Written off or treated as bad debt.",
+                    ok: "Account reviewed and marked OK.",
+                    na: "Status not applicable for this account."
                 }[category] || "Credit control status.";
             }
 
@@ -55779,53 +55756,27 @@
 
             function setElementVisible(element, isVisible) {
                 if (!element) return;
-                const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
                 if (!element.classList.contains("console-view-surface")) {
                     element.classList.add("console-view-surface");
                 }
+                if (element.__screenHideTimer) {
+                    window.clearTimeout(element.__screenHideTimer);
+                    element.__screenHideTimer = 0;
+                }
+                if (element.__screenEnterTimer) {
+                    window.clearTimeout(element.__screenEnterTimer);
+                    element.__screenEnterTimer = 0;
+                }
+                element.classList.remove("is-screen-entering", "is-screen-leaving");
                 if (isVisible) {
-                    if (element.__screenHideTimer) {
-                        window.clearTimeout(element.__screenHideTimer);
-                        element.__screenHideTimer = 0;
-                    }
                     element.hidden = false;
                     element.style.display = "";
-                    element.classList.remove("is-screen-leaving");
-                    if (prefersReducedMotion) {
-                        element.classList.remove("is-screen-entering");
-                        element.classList.add("is-screen-visible");
-                        return;
-                    }
-                    element.classList.add("is-screen-entering");
-                    window.requestAnimationFrame(() => {
-                        element.classList.add("is-screen-visible");
-                    });
-                    element.__screenEnterTimer = window.setTimeout(() => {
-                        element.classList.remove("is-screen-entering");
-                    }, 520);
+                    element.classList.add("is-screen-visible");
                     return;
                 }
-                if (element.hidden || element.style.display === "none") {
-                    return;
-                }
-                if (element.classList.contains("is-screen-leaving") && element.__screenHideTimer) {
-                    return;
-                }
-                element.classList.remove("is-screen-visible", "is-screen-entering");
-                if (prefersReducedMotion) {
-                    element.classList.remove("is-screen-leaving");
-                    element.hidden = true;
-                    element.style.display = "none";
-                    return;
-                }
-                element.classList.add("is-screen-leaving");
-                element.__screenHideTimer = window.setTimeout(() => {
-                    if (!element.classList.contains("is-screen-visible")) {
-                        element.hidden = true;
-                        element.style.display = "none";
-                        element.classList.remove("is-screen-leaving");
-                    }
-                }, 220);
+                element.classList.remove("is-screen-visible");
+                element.hidden = true;
+                element.style.display = "none";
             }
 
             function activeNavForView() {
@@ -55893,13 +55844,11 @@
             function saasNavForActiveView() {
                 if (activeView === "insights") return "home";
                 if (activeView === "ledger" || activeView === "client") return "home";
-                if (activeView === "cashflow" || activeView === "jays-stats" || activeView === "jays-stats-2") return "cashflow";
+                if (activeView === "cashflow" || activeView === "jays-stats" || activeView === "jays-stats-2") return "reporting";
                 if (activeView === "contact-archive") return "contact-archive";
-                if (activeView === "late-charges") return "lpcs";
-                if (activeView === "bad-debt") return "bad-debt";
+                if (activeView === "late-charges" || activeView === "pi-clearing-account" || activeView === "pi-clearing-account-page") return "tools";
                 if (activeView === "jashflow") return "jashflow";
-                if (activeView === "pi-clearing-account" || activeView === "pi-clearing-account-page") return "pi-clearing-account-page";
-                if (activeView === "juk-equity") return "juk-equity";
+                if (activeView === "juk-equity") return "reporting";
                 return "home";
             }
 
@@ -55910,7 +55859,6 @@
                 if (target === "cashflow") return handleAppNavigation("cashflow");
                 if (target === "lpcs") return handleAppNavigation("lpcs");
                 if (target === "contact-archive") return handleAppNavigation("contact-archive");
-                if (target === "bad-debt") return handleAppNavigation("bad-debt");
                 if (target === "jashflow") return handleAppNavigation("jashflow");
                 if (target === "pi-clearing-account-page") return handleAppNavigation("pi-clearing-account-page");
                 if (target === "juk-equity") return handleAppNavigation("juk-equity");
@@ -55989,7 +55937,7 @@
                 const customers = Array.isArray(state.customers) ? state.customers : [];
                 const sectionRows = [
                     { label: "Credit Control", detail: "Debtors table and workspace", nav: "home" },
-                    { label: "Cashflow", detail: "Daily collections, imports, and projections", nav: "cashflow" },
+                    { label: "Cash Collection", detail: "Daily collections, imports, and projections", nav: "cashflow" },
                     { label: "Reports", detail: "ME Reports and outputs", nav: "me-report" },
                 ];
                 const clientRows = customers.map((client) => {
@@ -56052,35 +56000,17 @@
                 });
                 const settingsMenu = document.querySelector("[data-saas-menu=\"settings\"]");
                 if (settingsMenu) settingsMenu.classList.toggle("is-active", activeView === "settings");
+                const toolsMenu = document.querySelector("[data-saas-menu=\"tools\"]");
+                if (toolsMenu) toolsMenu.classList.toggle("is-active", active === "tools");
+                const reportingMenu = document.querySelector("[data-saas-menu=\"reporting\"]");
+                if (reportingMenu) reportingMenu.classList.toggle("is-active", active === "reporting");
             }
 
             function renderSaasContextDrawer() {
                 const drawer = document.getElementById("saasContextDrawer");
                 if (!drawer) return;
-                const canShow = ["ledger", "client"].includes(activeView) || (splitViewEnabled() && activeView === "ledger");
-                const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
-                const invoice = findInvoiceById(selectedInvoiceId);
-                if (!canShow || !client) {
-                    drawer.hidden = true;
-                    drawer.innerHTML = "";
-                    return;
-                }
-                if (saasDrawerClosedClientId && saasDrawerClosedClientId === String(client.id || "")) {
-                    drawer.hidden = true;
-                    drawer.innerHTML = "";
-                    return;
-                }
-                const contractLabel = String(client?.clientProfile?.servicePlan || client?.clientProfile?.engagement || "No contract").trim();
-                drawer.innerHTML = `
-                    <button class="context-drawer-close" id="saasDrawerClose" type="button">Close</button>
-                    <h4>${escapeHTML(client.name || "Client")}</h4>
-                    <p>Outstanding ${escapeHTML(formatCurrency(Number(client.totalDue || 0)))}</p>
-                    <p>Client manager: ${escapeHTML(client.manager || "Unassigned")}</p>
-                    <p>Contract: ${escapeHTML(contractLabel)}</p>
-                    ${invoice ? `<p>Next invoice: ${escapeHTML(invoice.invoiceNumber || "Invoice")} · ${escapeHTML(formatDate(invoice.dueDate))} · ${escapeHTML(formatCurrency(invoice.amountDue || 0))}</p>` : "<p>Next invoice: Not available</p>"}
-                    <p>Latest activity: ${escapeHTML(client.clientNotes?.[0]?.body || "No recent notes logged.")}</p>
-                `;
-                drawer.hidden = false;
+                drawer.hidden = true;
+                drawer.innerHTML = "";
             }
 
             function wireSaasShell() {
@@ -56101,6 +56031,7 @@
                     const navButton = event.target.closest?.("[data-saas-nav]");
                     if (navButton) {
                         event.preventDefault();
+                        document.querySelectorAll(".saas-nav-menu[open]").forEach((menu) => menu.removeAttribute("open"));
                         openSaasTopNav(navButton.dataset.saasNav || "");
                         return;
                     }
@@ -69923,6 +69854,23 @@
                 `;
             }
 
+            function latestStatusStamp(invoice) {
+                const statusRows = Array.isArray(invoice?.statuses) ? invoice.statuses : [];
+                const parsedRows = statusRows
+                    .map((row) => ({ stamp: String(row?.stamp || "").trim(), time: Date.parse(String(row?.stamp || "").trim()) }))
+                    .filter((row) => row.stamp && Number.isFinite(row.time))
+                    .sort((left, right) => right.time - left.time);
+                return parsedRows[0]?.stamp || String(invoice?.lastChasedAt || "").trim();
+            }
+
+            function statusUpdatedPill(invoice) {
+                const stamp = latestStatusStamp(invoice);
+                if (!stamp) {
+                    return '<span class="client-status-updated is-empty" title="Status has not been updated yet">Status not set</span>';
+                }
+                return `<span class="client-status-updated" title="Status last updated ${escapeHTML(formatDateTime(stamp))}">Updated ${escapeHTML(formatDate(stamp))}</span>`;
+            }
+
             function renderInvoiceTable() {
                 const startedAt = PERF_PROFILE_ENABLED ? performance.now() : 0;
                 const tbody = document.getElementById("invoiceTableBody");
@@ -69935,7 +69883,7 @@
                 if (isSyncing && !paged.length) {
                     for (let index = 0; index < 5; index += 1) {
                         const row = document.createElement("tr");
-                        row.innerHTML = `<td colspan="5"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
+                        row.innerHTML = `<td colspan="4"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
                         tbody.appendChild(row);
                     }
                 } else if (!paged.length) {
@@ -69952,7 +69900,7 @@
                             title: cacheGap ? "Saved ledger cache needs rebuilding" : "No ledger rows match the current filters",
                             detail: cacheGap ? state.cacheStatus.message : "Connect Xero and sync live data, or widen the search and filter settings."
                         };
-                    row.innerHTML = `<td colspan="5"><div class="empty-state"><p class="eyebrow">${emptyCopy.eyebrow}</p><h4>${emptyCopy.title}</h4><p>${emptyCopy.detail}</p></div></td>`;
+                    row.innerHTML = `<td colspan="4"><div class="empty-state"><p class="eyebrow">${emptyCopy.eyebrow}</p><h4>${emptyCopy.title}</h4><p>${emptyCopy.detail}</p></div></td>`;
                     tbody.appendChild(row);
                 } else {
                     paged.forEach((group) => {
@@ -69971,14 +69919,13 @@
                             <td>
                                 <div class="client-group-anchor">
                                     <div class="client-title-row">
-                                        <div class="client-name" title="${escapeHTML(clientName)}">${escapeHTML(clientName)}</div>
-                                        <div class="client-inline-status">${statusPill(invoice)}<span class="client-open-count">${escapeHTML(openInvoiceLabel)}</span></div>
+                                        <button class="client-name client-name-button" type="button" title="Open ${escapeHTML(clientName)}" data-open-client>${escapeHTML(clientName)}</button>
+                                        <div class="client-inline-status">${statusPill(invoice)}${statusUpdatedPill(invoice)}<span class="client-open-count">${escapeHTML(openInvoiceLabel)}</span></div>
                                     </div>
                                 </div>
                             </td>
                             <td class="amount-cell is-client-total" tabindex="0"><strong class="amount-value">${formatCurrency(group.amountDue)}</strong></td>
                             <td class="client-note-cell" data-column="clientNotes">${ledgerClientNoteMarkup(latestNote)}</td>
-                            <td class="actions-cell"><button class="table-open-button" type="button" data-open-client>Open</button></td>
                         `;
                         const checkbox = row.querySelector(".client-select");
                         checkbox.indeterminate = isGroupPartial;
@@ -69995,7 +69942,6 @@
                             event.stopPropagation();
                             openClientGroup(group);
                         });
-                        row.addEventListener("click", () => openClientGroup(group));
                         tbody.appendChild(row);
                     });
                 }
@@ -70368,6 +70314,75 @@
                 renderRecoveryWorkflow(client, invoices, totals, noticeInvoices, hasLegal);
             }
 
+            function renderClientDebtorSummary(client, invoices, totals) {
+                const target = document.getElementById("clientDebtorSummaryGrid");
+                const allocationButton = document.getElementById("clientQuickAllocationButton");
+                const lpcButton = document.getElementById("clientQuickLpcButton");
+                const badDebtButton = document.getElementById("clientQuickBadDebtButton");
+                if (!target) return;
+
+                if (!client) {
+                    target.innerHTML = "";
+                    if (allocationButton) allocationButton.disabled = true;
+                    if (lpcButton) lpcButton.disabled = true;
+                    if (badDebtButton) badDebtButton.disabled = true;
+                    return;
+                }
+
+                const cached = cachedCustomerTransactions(client);
+                const unallocatedCredits = Array.isArray(cached?.unallocatedCredits) ? cached.unallocatedCredits : [];
+                const overpayments = Array.isArray(cached?.overpayments) ? cached.overpayments : [];
+                const creditToAllocate = [...unallocatedCredits, ...overpayments].reduce((sum, row) => sum + Number(row?.remainingCredit || 0), 0);
+                const creditCount = unallocatedCredits.length + overpayments.length;
+                const lpcEligible = invoices.filter((invoice) => isLatePaymentChargeEligible(invoice)).length;
+                const badDebtCandidates = invoices.filter((invoice) => isWriteOffCandidate(invoice)).length;
+                const currencyCode = invoices[0]?.currencyCode || "GBP";
+
+                target.innerHTML = [
+                    `<article class="client-debtor-summary-card is-alert"><span>Outstanding</span><strong>${escapeHTML(formatXeroCurrency(totals.principal || 0, currencyCode))}</strong><small>${Number(invoices.length).toLocaleString("en-GB")} transactions</small></article>`,
+                    `<article class="client-debtor-summary-card ${Number(totals.overduePrincipal || 0) > 0 ? "is-alert" : ""}"><span>Overdue</span><strong>${escapeHTML(formatXeroCurrency(totals.overduePrincipal || 0, currencyCode))}</strong><small>${Number(totals.overdueInvoiceCount || 0).toLocaleString("en-GB")} overdue invoices</small></article>`,
+                    `<article class="client-debtor-summary-card is-credit"><span>Credits to allocate</span><strong>${escapeHTML(formatXeroCurrency(creditToAllocate, currencyCode))}</strong><small>${creditCount.toLocaleString("en-GB")} credit movement${creditCount === 1 ? "" : "s"}</small></article>`,
+                    `<article class="client-debtor-summary-card"><span>Recovery tools</span><strong>${lpcEligible.toLocaleString("en-GB")} LPC · ${badDebtCandidates.toLocaleString("en-GB")} bad debt</strong><small>Run actions from this workspace</small></article>`
+                ].join("");
+
+                if (allocationButton) allocationButton.disabled = creditToAllocate <= 0;
+                if (lpcButton) lpcButton.disabled = lpcEligible === 0;
+                if (badDebtButton) badDebtButton.disabled = badDebtCandidates === 0;
+            }
+
+            function selectClientInvoicesForAction(predicate) {
+                const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+                if (!client) return [];
+                const candidates = clientInvoices(client).filter((invoice) => predicate(invoice));
+                selectedClientInvoiceIds = new Set(candidates.map((invoice) => invoice.id));
+                updateClientInvoiceBulkNoteButton();
+                return candidates;
+            }
+
+            async function runClientQuickAllocation() {
+                const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+                if (!client) return showToast("Select a client first.", "info");
+                await ensureCustomerTransactions(client, false, { silent: true });
+                const cached = cachedCustomerTransactions(client);
+                const credits = Array.isArray(cached?.unallocatedCredits) ? cached.unallocatedCredits : [];
+                const cash = Array.isArray(cached?.overpayments) ? cached.overpayments : [];
+                const source = credits[0] || cash[0] || null;
+                if (!source) return showToast("No unallocated credit is available for this client.", "info");
+                openAllocationPanel(source);
+            }
+
+            async function runClientQuickLpc() {
+                const candidates = selectClientInvoicesForAction((invoice) => isLatePaymentChargeEligible(invoice));
+                if (!candidates.length) return showToast("No LPC-eligible invoices for this client.", "info");
+                await raiseLpcsForSelectedClientInvoices();
+            }
+
+            async function runClientQuickBadDebt() {
+                const candidates = selectClientInvoicesForAction((invoice) => isWriteOffCandidate(invoice));
+                if (!candidates.length) return showToast("No bad debt candidates for this client.", "info");
+                await writeOffSelectedClientInvoices();
+            }
+
             function renderSelectedInvoiceDetail(invoice) {
                 const target = document.getElementById("selectedInvoiceDetail");
                 if (!target) return;
@@ -70514,6 +70529,7 @@
                 renderPaymentPlanPageSummary(invoices);
                 renderPaymentsMade(client);
                 renderOutstandingTransactions(client, invoices);
+                renderClientDebtorSummary(client, invoices, accountInterest);
                 ensureCustomerTransactions(client);
                 updatePaymentPlanPreview();
                 renderClientInvoiceList(invoices);
@@ -91185,7 +91201,7 @@
                         <header class="jays-stats-topbar">
                             <div>
                                 <p class="eyebrow">Statement transaction loader</p>
-                                <h3>Cashflow</h3>
+                                <h3>Cash Collection</h3>
                                 <p class="detail-meta">${escapeHTML(String(account?.name || "JUK Trading Account"))} ${escapeHTML(String(account?.sortCode || "20-59-43"))} ${escapeHTML(String(account?.accountNumber || "93960404"))}</p>
                             </div>
                             <div class="detail-actions">
@@ -101807,6 +101823,7 @@
                     client: "Client workspace",
                     settings: "Settings",
                     insights: "Home insights",
+                    cashflow: "Cash Collection",
                     "late-charges": "Late Payment Charges",
                     "bad-debt": "Bad Debt",
                     "contact-archive": "Contact Archive",
@@ -118699,6 +118716,9 @@
                 document.getElementById("clientBulkInvoiceNoteButton")?.addEventListener("click", addNoteToSelectedClientInvoices);
                 document.getElementById("clientBulkWriteOffButton")?.addEventListener("click", writeOffSelectedClientInvoices);
                 document.getElementById("clientBulkRaiseLpcsButton")?.addEventListener("click", raiseLpcsForSelectedClientInvoices);
+                document.getElementById("clientQuickAllocationButton")?.addEventListener("click", runClientQuickAllocation);
+                document.getElementById("clientQuickLpcButton")?.addEventListener("click", runClientQuickLpc);
+                document.getElementById("clientQuickBadDebtButton")?.addEventListener("click", runClientQuickBadDebt);
                 document.getElementById("clientUpdateAccountStatusButton")?.addEventListener("click", promptClientAccountStatusUpdate);
                 document.getElementById("clientBackToClientsButton")?.addEventListener("click", returnToLedgerView);
                 document.getElementById("clientShowAllocatedToggle")?.addEventListener("change", (event) => {
@@ -122328,20 +122348,10 @@
                     title: "Companies House Settings",
                     meta: "Manage Companies House credentials, filing environment, and default Xero invoice posting values."
                 },
-                mapping: {
-                    eyebrow: "Mappings",
-                    title: "Mapping Changes / COA",
-                    meta: "Review posting defaults and chart-of-account assumptions."
-                },
                 "lock-date-mapping": {
                     eyebrow: "Lock-date mapping",
                     title: "Xero Lock-Date Mapping",
                     meta: "Map each connected Xero tenant to a Companies House company number and keep it saved."
-                },
-                outbox: {
-                    eyebrow: "Xero outbox",
-                    title: "Xero Outbox / Pending",
-                    meta: "Review queued Xero actions waiting for a successful push."
                 },
                 letters: {
                     eyebrow: "Letters",
@@ -122412,11 +122422,6 @@
                     eyebrow: "Domain health",
                     title: "Domain Health Control Panel",
                     meta: "Monitor DNS verification, CNAME routing, and HTTPS reachability for your live custom domain."
-                },
-                "factory-reset": {
-                    eyebrow: "Factory reset",
-                    title: "Factory Reset",
-                    meta: "Protected destructive controls are isolated from day-to-day settings."
                 }
             };
             const settingsSectionGroupMap = {
@@ -122427,9 +122432,7 @@
                 "client-matching": "connections",
                 "renewal-settings": "practice-settings",
                 "confirmation-settings": "practice-settings",
-                mapping: "practice-settings",
                 "lock-date-mapping": "practice-settings",
-                outbox: "communications",
                 letters: "communications",
                 "gmail-connection": "communications",
                 "me-report-email": "communications",
@@ -122437,7 +122440,6 @@
                 "security-staff-pics": "security-settings",
                 "security-audit": "security-settings",
                 "security-hardening": "security-settings",
-                "factory-reset": "technical-settings",
                 "system-status": "technical-settings",
                 "domain-settings": "technical-settings",
                 usage: "technical-settings",
@@ -123602,10 +123604,11 @@
             function wireBulkActions() {
                 document.getElementById("bulkApplyStatusButton")?.addEventListener("click", async () => {
                     const statusValue = document.getElementById("bulkLedgerStatusSelect")?.value;
-                    if (!statusValue) return;
-                    if (!window.confirm(`Apply "${statusValue}" to ${selectedInvoiceIds.size} selected invoice${selectedInvoiceIds.size === 1 ? "" : "s"}?`)) return;
+                    const statusLabel = statusValue ? `"${statusValue}"` : "\"No status\"";
+                    if (!window.confirm(`Apply ${statusLabel} to ${selectedInvoiceIds.size} selected invoice${selectedInvoiceIds.size === 1 ? "" : "s"}?`)) return;
                     const invoiceIds = [...selectedInvoiceIds];
-                    const note = window.prompt("Optional note for the status history and Xero contact/invoice note", `Bulk moved to ${statusValue}`) || `Bulk moved to ${statusValue}`;
+                    const defaultNote = statusValue ? `Bulk moved to ${statusValue}` : "Bulk status cleared";
+                    const note = window.prompt("Optional note for the status history and Xero contact/invoice note", defaultNote) || defaultNote;
                     try {
                         const response = await requestJSON(api.endpoints.bulkStatus, {
                             method: "POST",
@@ -125529,6 +125532,9 @@
             }
 
             const CLIENT_ACCOUNT_STATUS_OPTIONS = [
+                { key: "clear", label: "No status", value: "" },
+                { key: "ok", label: "OK", value: "OK" },
+                { key: "na", label: "N/A", value: "N/A" },
                 { key: "outstanding", label: "Outstanding", value: "Outstanding" },
                 { key: "query", label: "Query", value: "Query" },
                 { key: "notice", label: "7 Day Notice", value: "7 Day Notice" },
@@ -125564,10 +125570,12 @@
                     showToast("Status update cancelled: choose a valid option.", "error");
                     return;
                 }
-                const note = `Account status updated to ${selectedOption.label} from client workspace (${new Date().toLocaleString("en-GB")}).`;
+                const note = selectedOption.value
+                    ? `Account status updated to ${selectedOption.label} from client workspace (${new Date().toLocaleString("en-GB")}).`
+                    : `Account status cleared from client workspace (${new Date().toLocaleString("en-GB")}).`;
                 await applyClientStatus(client, selectedOption.value, note, {
-                    localMessage: `Account moved to ${selectedOption.label} locally`,
-                    syncedMessage: `Account moved to ${selectedOption.label} and synced`,
+                    localMessage: selectedOption.value ? `Account moved to ${selectedOption.label} locally` : "Account status cleared locally",
+                    syncedMessage: selectedOption.value ? `Account moved to ${selectedOption.label} and synced` : "Account status cleared and synced",
                 });
             }
 
@@ -125580,8 +125588,9 @@
                     showToast("No open invoices to update for this client", "info");
                     return false;
                 }
+                const statusLabel = statusValue ? statusValue : "No status";
                 const confirmText = options.confirmText
-                    || `Update ${invoiceIds.length} open invoice${invoiceIds.length === 1 ? "" : "s"} for ${client.name || "this client"} to "${statusValue}"?`;
+                    || `Update ${invoiceIds.length} open invoice${invoiceIds.length === 1 ? "" : "s"} for ${client.name || "this client"} to "${statusLabel}"?`;
                 if (!options.skipConfirm && !window.confirm(confirmText)) return false;
 
                 const stamp = new Date().toISOString();
@@ -125590,7 +125599,7 @@
                     if (!match) return;
                     match.invoice.controlStatus = statusValue;
                     match.invoice.lastChasedAt = stamp;
-                    match.invoice.statuses = [{ title: statusValue, body: note, stamp }, ...(match.invoice.statuses || [])];
+                    match.invoice.statuses = [{ title: statusValue || "Status cleared", body: note, stamp }, ...(match.invoice.statuses || [])];
                 });
                 persistState();
                 renderAll();
@@ -125801,7 +125810,6 @@
                     const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
                     const statusValue = document.getElementById("bulkStatusSelect")?.value;
                     const note = document.getElementById("bulkStatusNote")?.value.trim() || "";
-                    if (!statusValue) return;
                     if (await applyClientStatus(client, statusValue, note)) {
                         const bulkStatusNote = document.getElementById("bulkStatusNote");
                         if (bulkStatusNote) bulkStatusNote.value = "";
